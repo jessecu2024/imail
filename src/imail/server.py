@@ -2,7 +2,7 @@
 
 Endpoints:
     GET  /                       → serve the SPA shell
-    GET  /api/status             → app health + whether Anthropic key is set
+    GET  /api/status             → app health + whether LLM key is set
     GET  /api/accounts           → list configured accounts
     POST /api/accounts/imap      → add an IMAP account (Outlook / 163 / QQ / custom)
     POST /api/accounts/gmail     → add a Gmail account (OAuth flow runs server-side)
@@ -25,17 +25,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from mail_triage.accounts import Account, AccountStore, open_provider
-from mail_triage.config import load_settings
-from mail_triage.providers.base import EmailMsg, MailProvider, ProviderError
-from mail_triage.providers.imap import PRESETS
-from mail_triage.reply_generator import ReplyGenerator, ReplyTrio
+from imail.accounts import Account, AccountStore, open_provider
+from imail.config import load_settings
+from imail.providers.base import EmailMsg, MailProvider, ProviderError
+from imail.providers.imap import PRESETS
+from imail.reply_generator import ReplyGenerator, ReplyTrio
 
-logger = logging.getLogger("mail-triage.server")
+logger = logging.getLogger("imail.server")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="mail-triage", version="0.2.0")
+app = FastAPI(title="imail", version="0.2.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -65,7 +65,7 @@ _session: _Session | None = None
 # ----------------------------------------------------------------------
 class StatusResponse(BaseModel):
     ok: bool
-    anthropic_configured: bool
+    llm_configured: bool
     model: str
     signoff: str
     config_dir: str
@@ -120,11 +120,11 @@ def index() -> FileResponse:
 
 @app.get("/api/status", response_model=StatusResponse)
 def status() -> StatusResponse:
-    settings = load_settings(require_anthropic=False)
+    settings = load_settings(require_api_key=False)
     return StatusResponse(
         ok=True,
-        anthropic_configured=bool(settings.anthropic_api_key),
-        model=settings.anthropic_model,
+        llm_configured=bool(settings.api_key),
+        model=settings.model,
         signoff=settings.user_signoff,
         config_dir=str(settings.config_dir),
     )
@@ -190,7 +190,7 @@ def triage_start(req: StartRequest) -> dict[str, int]:
         _session.close()
         _session = None
 
-    settings = load_settings(require_anthropic=True)
+    settings = load_settings(require_api_key=True)
     store = AccountStore.load()
     account = store.get(req.account_id)
     if account is None:
@@ -203,8 +203,8 @@ def triage_start(req: StartRequest) -> dict[str, int]:
         raise HTTPException(502, str(exc)) from exc
 
     generator = ReplyGenerator(
-        api_key=settings.anthropic_api_key,
-        model=settings.anthropic_model,
+        api_key=settings.api_key,
+        model=settings.model,
         user_signoff=settings.user_signoff,
     )
     _session = _Session(account=account, provider=provider, generator=generator)

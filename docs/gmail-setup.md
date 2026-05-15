@@ -1,19 +1,19 @@
 # Gmail OAuth Setup (One-time, ~5 minutes)
 
-`mail-triage` reads your inbox and drafts replies on your behalf. It needs an OAuth
+`imail` reads your inbox and drafts replies on your behalf. It needs an OAuth
 **desktop-app** client. You only need to do this once.
 
 ## 1. Enable the Gmail API
 
 1. Open <https://console.cloud.google.com/>.
-2. Create a new project (top bar → project picker → **New Project**), e.g. `mail-triage`.
+2. Create a new project (top bar → project picker → **New Project**), e.g. `imail`.
 3. Search bar → **Gmail API** → **Enable**.
 
 ## 2. Configure the OAuth consent screen
 
 1. Left sidebar → **APIs & Services → OAuth consent screen**.
 2. User type: **External** → Create.
-3. App name: `mail-triage`. Support email: your own.
+3. App name: `imail`. Support email: your own.
 4. Scopes: skip (we request them at runtime).
 5. **Test users**: add your own Gmail address.
 
@@ -22,14 +22,14 @@
 ## 3. Create OAuth client credentials
 
 1. Sidebar → **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
-2. Application type: **Desktop app**. Name: `mail-triage-cli`.
+2. Application type: **Desktop app**. Name: `imail-cli`.
 3. Click **Create**, then **Download JSON**.
 
 ## 4. Drop the file in place
 
 ```bash
-mkdir -p ~/.config/mail-triage
-mv ~/Downloads/client_secret_*.json ~/.config/mail-triage/credentials.json
+mkdir -p ~/.config/imail
+mv ~/Downloads/client_secret_*.json ~/.config/imail/credentials.json
 ```
 
 (or set `GMAIL_CREDENTIALS_PATH` in your `.env` to point elsewhere)
@@ -37,12 +37,12 @@ mv ~/Downloads/client_secret_*.json ~/.config/mail-triage/credentials.json
 ## 5. First run
 
 ```bash
-uv run mail-triage
+uv run imail
 ```
 
 A browser tab will open; sign in with the Gmail account you added as a test user
 and grant the requested scopes. A token is cached to
-`~/.config/mail-triage/token.json` — subsequent runs are silent.
+`~/.config/imail/token.json` — subsequent runs are silent.
 
 ## Scopes
 

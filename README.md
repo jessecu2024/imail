@@ -1,10 +1,10 @@
-# mail-triage
+# imail
 
 > Inbox triage as a local app. Log in once to Gmail, Outlook, or 163 — then clear your unread
-> emails by picking from three LLM-drafted replies per message.
+> emails by picking from three LLM-drafted replies per message. Powered by DeepSeek.
 
-You wake up to 30 emails. Each one needs a yes / no / "let me get back to you." This app fetches
-your unread inbox, asks Claude for **three reply versions** per email (*positive · neutral · negative*),
+You wake up to 30 emails. Each one needs a yes / no / "let me get back to you." `imail` fetches
+your unread inbox, asks the model for **three reply versions** per email (*positive · neutral · negative*),
 and saves your pick as a Gmail/IMAP draft. You stay in control of every Send button.
 
 ```
@@ -24,11 +24,11 @@ and saves your pick as a Gmail/IMAP draft. You stay in control of every Send but
 ## Features
 
 - ✦ **Multi-provider** — Gmail (OAuth), and any IMAP mailbox: Outlook, 163, 126, QQ, Yahoo, iCloud, custom hosts.
-- ✦ **Local web app** — `mail-triage` boots a FastAPI server and pops your browser to `http://127.0.0.1:8765`.
+- ✦ **Local web app** — `imail` boots a FastAPI server and pops your browser to `http://127.0.0.1:8765`.
 - ✦ **Drafts only** — never sends mail on your behalf. You press *Send* yourself in your normal mail client.
 - ✦ **Secrets in OS keyring** — IMAP app passwords go to macOS Keychain (or platform equivalent), not a plain text file.
-- ✦ **Three drafts per email in a single API call** — fast, cheap, self-consistent.
-- ✦ **Prompt caching** keeps per-email latency low across a session.
+- ✦ **DeepSeek by default** — cheap, fast, OpenAI-compatible. Point `IMAIL_BASE_URL` at any other OpenAI-compatible endpoint (Together, Groq, Moonshot, 302.AI, an Anthropic-proxy, etc.) and it just works.
+- ✦ **Three drafts per email in a single API call** — fast, cheap, self-consistent. DeepSeek auto-caches the system prefix server-side.
 - ✦ **Keyboard-first** — `1` / `2` / `3` to save a draft, `S` to skip, `Q` to end.
 
 ## Quick Start
@@ -37,12 +37,12 @@ and saves your pick as a Gmail/IMAP draft. You stay in control of every Send but
 # 1. Install deps
 uv sync
 
-# 2. Set your Anthropic key
+# 2. Set your DeepSeek key
 cp .env.example .env
-# → put your ANTHROPIC_API_KEY in .env
+# → put your DEEPSEEK_API_KEY in .env (get one at https://platform.deepseek.com/api_keys)
 
 # 3. Launch the app
-uv run mail-triage
+uv run imail
 # → opens http://127.0.0.1:8765 in your browser
 ```
 
@@ -60,13 +60,15 @@ After that, click your mailbox card → walk through unread emails → press 1/2
 
 All settings come from `.env` (see `.env.example`):
 
-| Variable                  | Default                            | Notes                                    |
-|---------------------------|------------------------------------|------------------------------------------|
-| `ANTHROPIC_API_KEY`       | *(required)*                       | Your Anthropic key                       |
-| `ANTHROPIC_MODEL`         | `claude-haiku-4-5-20251001`        | Use `claude-sonnet-4-6` for sharper drafts |
-| `USER_SIGNOFF`            | `Jie`                              | Name used in reply sign-offs              |
-| `MAIL_TRIAGE_PORT`        | `8765`                             | Local server port                         |
-| `MAIL_TRIAGE_CONFIG_DIR`  | `~/.config/mail-triage`            | Where accounts.json and tokens live      |
+| Variable             | Default                       | Notes                                                                 |
+|----------------------|-------------------------------|-----------------------------------------------------------------------|
+| `DEEPSEEK_API_KEY`   | *(required)*                  | DeepSeek API key. `OPENAI_API_KEY` is a fallback for non-DeepSeek endpoints. |
+| `IMAIL_BASE_URL`     | `https://api.deepseek.com`    | OpenAI-compatible endpoint                                            |
+| `IMAIL_MODEL`        | `deepseek-chat`               | Or `deepseek-reasoner` for sharper, slower drafts                      |
+| `USER_SIGNOFF`       | `Jie`                         | Name used in reply sign-offs                                          |
+| `IMAIL_PORT`         | `8765`                        | Local server port                                                     |
+| `IMAIL_HOST`         | `127.0.0.1`                   | Bind address (only listens on loopback by default)                    |
+| `IMAIL_CONFIG_DIR`   | `~/.config/imail`             | Where accounts.json and OAuth tokens live                              |
 
 ## Development
 
@@ -81,12 +83,12 @@ uv run pytest                # tests
 ## Project Structure
 
 ```
-src/mail_triage/
+src/imail/
   cli.py                  Launcher — boots uvicorn + opens browser
   config.py               .env loader
   server.py               FastAPI app — status, accounts, triage session
   accounts.py             Account manifest + keyring-backed secrets
-  reply_generator.py      Anthropic call + JSON parser
+  reply_generator.py      DeepSeek (OpenAI-compatible) call + JSON parser
   providers/
     base.py               EmailMsg + MailProvider Protocol
     gmail.py              Gmail API provider (OAuth)
@@ -107,8 +109,9 @@ tests/                    pytest suites
 
 - **No `gmail.send` scope is requested**; the Gmail provider can only fetch, draft, mark-read, archive.
 - **IMAP app passwords are stored in the OS keyring**, not in `accounts.json` or `.env`.
-- **OAuth tokens** are saved to `~/.config/mail-triage/token-<account-id>.json` (mode 0600).
-- This is a personal tool. Don't host it on a shared machine without thinking about who can reach `127.0.0.1:8765`.
+- **OAuth tokens** are saved to `~/.config/imail/token-<account-id>.json` (mode 0600).
+- Server listens on `127.0.0.1` by default. Don't move it to `0.0.0.0` on a shared machine.
+- **Email content reaches DeepSeek's servers.** If you'd rather not share message bodies with any third party, point `IMAIL_BASE_URL` at a self-hosted Ollama / vLLM endpoint running an instruction model.
 
 ## License
 

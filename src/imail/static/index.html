@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>mail-triage</title>
+  <title>imail</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
@@ -13,14 +13,14 @@
   <header class="topbar">
     <div class="brand">
       <span class="logo">✉</span>
-      <span class="name">mail-triage</span>
+      <span class="name">imail</span>
     </div>
     <div class="status">
-      <template x-if="status.anthropic_configured">
-        <span class="pill ok">Claude · <span x-text="status.model"></span></span>
+      <template x-if="status.llm_configured">
+        <span class="pill ok">DeepSeek · <span x-text="status.model"></span></span>
       </template>
-      <template x-if="!status.anthropic_configured">
-        <span class="pill warn">ANTHROPIC_API_KEY missing</span>
+      <template x-if="!status.llm_configured">
+        <span class="pill warn">DEEPSEEK_API_KEY missing</span>
       </template>
     </div>
   </header>
@@ -71,14 +71,14 @@
       <h2>Gmail</h2>
       <p class="muted">
         Gmail uses OAuth. You need a one-time <code>credentials.json</code> from Google Cloud Console
-        (5 minutes — see <a href="https://github.com/jessecu2024/mail-triage/blob/main/docs/gmail-setup.md" target="_blank">setup guide</a>).
+        (5 minutes — see <a href="https://github.com/jessecu2024/imail/blob/main/docs/gmail-setup.md" target="_blank">setup guide</a>).
       </p>
       <label>Label
         <input type="text" x-model="form.gmail.label" placeholder="Work · Gmail" />
       </label>
       <label>Path to credentials.json
         <input type="text" x-model="form.gmail.credentials_path"
-               placeholder="/Users/you/.config/mail-triage/credentials.json" />
+               placeholder="/Users/you/.config/imail/credentials.json" />
       </label>
       <button class="primary" @click="addGmail()" :disabled="busy">
         <span x-text="busy ? 'Adding…' : 'Add Gmail account'"></span>

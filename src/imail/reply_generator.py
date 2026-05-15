@@ -1,8 +1,9 @@
-"""Generate three reply versions per email using the Anthropic API.
+"""Generate three reply versions per email using DeepSeek's OpenAI-compatible API.
 
-We ask Claude for three drafts in a single call (cheaper, lower latency, more
-self-consistent than three separate calls). Prompt caching keeps the system
-prompt warm across emails in the same session.
+We ask the model for three drafts in a single call — cheaper, lower latency, and
+more self-consistent than three separate calls. DeepSeek transparently caches
+common prefixes server-side, so re-using the same system prompt across emails
+in one session is essentially free for the cached portion.
 """
 
 from __future__ import annotations
@@ -10,12 +11,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from anthropic import Anthropic
+from openai import OpenAI
 
-from mail_triage.providers.base import EmailMsg
+from imail.providers.base import EmailMsg
 
-# System prompt is intentionally long & stable so it can be cached.
-# Variable bits (the email, the user's name) live in the user message.
+# Stable system prompt — long, so the cached prefix is large and re-used.
 SYSTEM_PROMPT = """You are an email-reply assistant. For every email the user shows you,
 draft THREE complete reply versions, each tonally distinct, so the user can
 pick one in under five seconds.
@@ -65,28 +65,32 @@ class ReplyTrio:
 
 
 class ReplyGenerator:
-    """Anthropic-backed generator with prompt caching."""
+    """OpenAI-SDK client pointed at DeepSeek (or any OpenAI-compatible host)."""
 
-    def __init__(self, api_key: str, model: str, user_signoff: str) -> None:
-        self._client = Anthropic(api_key=api_key)
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        user_signoff: str,
+        base_url: str = "https://api.deepseek.com",
+    ) -> None:
+        self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
         self._signoff = user_signoff
 
     def generate(self, email: EmailMsg) -> ReplyTrio:
         user_msg = self._build_user_message(email)
-        response = self._client.messages.create(
+        response = self._client.chat.completions.create(
             model=self._model,
-            max_tokens=1024,
-            system=[
-                {
-                    "type": "text",
-                    "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
             ],
-            messages=[{"role": "user", "content": user_msg}],
+            response_format={"type": "json_object"},
+            max_tokens=1024,
+            temperature=0.7,
         )
-        text = "".join(block.text for block in response.content if block.type == "text")
+        text = response.choices[0].message.content or ""
         return parse_reply_json(text)
 
     def _build_user_message(self, email: EmailMsg) -> str:

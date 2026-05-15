@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mail_triage.reply_generator import ReplyTrio, parse_reply_json
+from imail.reply_generator import ReplyTrio, parse_reply_json
 
 
 def test_parse_clean_json() -> None:

@@ -17,13 +17,13 @@ from typing import Literal
 
 import keyring
 
-from mail_triage.config import load_settings
-from mail_triage.providers.base import MailProvider
-from mail_triage.providers.gmail import GmailProvider
-from mail_triage.providers.imap import PRESETS, ImapProvider
+from imail.config import load_settings
+from imail.providers.base import MailProvider
+from imail.providers.gmail import GmailProvider
+from imail.providers.imap import PRESETS, ImapProvider
 
 ProviderKind = Literal["gmail", "imap"]
-KEYRING_SERVICE = "mail-triage"
+KEYRING_SERVICE = "imail"
 
 
 @dataclass
@@ -74,7 +74,7 @@ class AccountStore:
 
     @classmethod
     def load(cls) -> AccountStore:
-        settings = load_settings(require_anthropic=False)
+        settings = load_settings(require_api_key=False)
         store_path = settings.gmail_credentials_path.parent / "accounts.json"
         accounts: list[Account] = []
         if store_path.exists():
@@ -114,7 +114,7 @@ class AccountStore:
 def open_provider(account: Account) -> MailProvider:
     """Construct a live MailProvider for the given account."""
     if account.kind == "gmail":
-        settings = load_settings(require_anthropic=False)
+        settings = load_settings(require_api_key=False)
         credentials_path = (
             Path(account.gmail_credentials_path)
             if account.gmail_credentials_path

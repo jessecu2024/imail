@@ -3,7 +3,7 @@
 For every IMAP provider, you sign in with your **email** and an **app password / 授权码** —
 *not* your normal account password. Most providers require this for security (2FA accounts cannot use the regular password over IMAP).
 
-> mail-triage never asks for your real password. Generate a dedicated app password,
+> imail never asks for your real password. Generate a dedicated app password,
 > paste it once, and it's stored in your OS keyring.
 
 ---
@@ -12,7 +12,7 @@ For every IMAP provider, you sign in with your **email** and an **app password /
 
 1. Enable IMAP in your mailbox: Outlook web → **Settings** → **Mail** → **Sync email** → **POP and IMAP** → turn on **Let devices and apps use POP/IMAP**.
 2. Go to <https://account.microsoft.com/security> → **Advanced security options** → **App passwords** → **Create a new app password**.
-3. Copy the 16-character password. Paste it into mail-triage when adding the account.
+3. Copy the 16-character password. Paste it into imail when adding the account.
 
 Host: `outlook.office365.com:993`
 
@@ -24,11 +24,11 @@ Host: `outlook.office365.com:993`
 2. Top bar → **设置 (Settings)** → **POP3/SMTP/IMAP**.
 3. Enable **IMAP/SMTP 服务**.
 4. Follow the SMS verification prompt; you'll receive a **授权码** (16 characters).
-5. Use your full email (`you@163.com`) and the 授权码 in mail-triage.
+5. Use your full email (`you@163.com`) and the 授权码 in imail.
 
 Hosts: `imap.163.com:993`, `imap.126.com:993`
 
-> 163 returns "Unsafe Login" without an IMAP `ID` command. mail-triage sends it automatically.
+> 163 returns "Unsafe Login" without an IMAP `ID` command. imail sends it automatically.
 
 ---
 
@@ -47,7 +47,7 @@ Host: `imap.qq.com:993`
 ## Yahoo Mail
 
 1. <https://login.yahoo.com/account/security> → **Generate app password**.
-2. Name it `mail-triage`. Copy the password.
+2. Name it `imail`. Copy the password.
 
 Host: `imap.mail.yahoo.com:993`
 
@@ -70,7 +70,7 @@ If your provider isn't listed, choose **Custom** and supply:
 - **Port** — almost always `993`
 - **Email** + **password / app password**
 
-mail-triage uses IMAPS (TLS on port 993) only — no plaintext IMAP, no STARTTLS.
+imail uses IMAPS (TLS on port 993) only — no plaintext IMAP, no STARTTLS.
 
 ---
 
@@ -78,8 +78,8 @@ mail-triage uses IMAPS (TLS on port 993) only — no plaintext IMAP, no STARTTLS
 
 | Item                              | Location                                      |
 |-----------------------------------|-----------------------------------------------|
-| Account label, host, username     | `~/.config/mail-triage/accounts.json`         |
+| Account label, host, username     | `~/.config/imail/accounts.json`         |
 | App password / 授权码              | OS keyring (macOS Keychain on this machine)   |
-| Gmail OAuth refresh token         | `~/.config/mail-triage/token-<account-id>.json` (mode 0600) |
+| Gmail OAuth refresh token         | `~/.config/imail/token-<account-id>.json` (mode 0600) |
 
 You can remove an account from the UI at any time — the keyring entry and any token files are deleted with it.

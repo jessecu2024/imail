@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from email.header import decode_header, make_header
 from email.message import EmailMessage, Message
 
-from mail_triage.providers.base import EmailMsg, ProviderError
+from imail.providers.base import EmailMsg, ProviderError
 
 DEFAULT_PORT = 993
 COMMON_DRAFT_FOLDERS = ["Drafts", "[Gmail]/Drafts", "草稿箱", "Brouillons", "INBOX.Drafts"]
@@ -101,9 +101,7 @@ class ImapProvider:
     @staticmethod
     def _send_imap_id(conn: imaplib.IMAP4_SSL) -> None:
         """163/QQ refuse access without a client ID. Send something benign."""
-        client_id = (
-            '("name" "mail-triage" "version" "0.2" "vendor" "github.com/jessecu2024/mail-triage")'
-        )
+        client_id = '("name" "imail" "version" "0.2" "vendor" "github.com/jessecu2024/imail")'
         # imaplib doesn't expose ID directly; piggyback on _simple_command.
         typ, _ = conn._simple_command("ID", client_id)
         conn._untagged_response(typ, [None], "ID")

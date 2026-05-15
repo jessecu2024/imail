@@ -1,10 +1,10 @@
-/* Alpine.js component for the mail-triage SPA. */
+/* Alpine.js component for the imail SPA. */
 
 function app() {
   return {
     /* ------------------------- state ------------------------- */
     view: "picker",          // 'picker' | 'add' | 'triage'
-    status: { anthropic_configured: false, model: "", signoff: "", config_dir: "" },
+    status: { llm_configured: false, model: "", signoff: "", config_dir: "" },
     accounts: [],
     chosen: "",              // 'gmail' | 'outlook' | '163' | '126' | 'qq' | 'yahoo' | 'icloud' | 'custom'
     busy: false,

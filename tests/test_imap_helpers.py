@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mail_triage.providers.imap import (
+from imail.providers.imap import (
     _decode_header_safe,
     _extract_uid,
     _parse_list_folder,

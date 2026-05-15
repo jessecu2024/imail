@@ -16,13 +16,13 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """Isolate config dir per test so accounts.json doesn't leak between runs."""
-    monkeypatch.setenv("MAIL_TRIAGE_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-real")
+    monkeypatch.setenv("IMAIL_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-real")
 
     # Reimport server after env is set so it picks up the patched config dir.
     import importlib
 
-    import mail_triage.server as server_module
+    import imail.server as server_module
 
     importlib.reload(server_module)
 
@@ -35,7 +35,7 @@ def test_status_endpoint(client: TestClient) -> None:
     assert r.status_code == 200
     data = r.json()
     assert data["ok"] is True
-    assert data["anthropic_configured"] is True
+    assert data["llm_configured"] is True
 
 
 def test_accounts_starts_empty(client: TestClient) -> None:

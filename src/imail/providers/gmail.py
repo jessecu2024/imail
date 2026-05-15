@@ -12,7 +12,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-from mail_triage.providers.base import EmailMsg, ProviderError
+from imail.providers.base import EmailMsg, ProviderError
 
 # Read inbox + draft + modify labels. No "send" — drafts only by design.
 SCOPES = [

@@ -1,4 +1,4 @@
-"""Entrypoint: `mail-triage` boots the FastAPI server and opens a browser tab."""
+"""Entrypoint: `imail` boots the FastAPI server and opens a browser tab."""
 
 from __future__ import annotations
 
@@ -11,19 +11,19 @@ import webbrowser
 
 import uvicorn
 
-from mail_triage import __version__
-from mail_triage.config import load_settings
+from imail import __version__
+from imail.config import load_settings
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="mail-triage", description="Inbox triage as a local app.")
+    parser = argparse.ArgumentParser(prog="imail", description="Inbox triage as a local app.")
     parser.add_argument("--host", default=None, help="Bind address (default 127.0.0.1)")
     parser.add_argument("--port", type=int, default=None, help="Port (default 8765)")
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open a browser tab")
-    parser.add_argument("--version", action="version", version=f"mail-triage {__version__}")
+    parser.add_argument("--version", action="version", version=f"imail {__version__}")
     args = parser.parse_args()
 
-    settings = load_settings(require_anthropic=False)
+    settings = load_settings(require_api_key=False)
     host = args.host or settings.server_host
     port = args.port or settings.server_port
     url = f"http://{host}:{port}"
@@ -33,16 +33,16 @@ def main() -> None:
         format="%(asctime)s  %(levelname)-5s  %(name)s — %(message)s",
         datefmt="%H:%M:%S",
     )
-    logger = logging.getLogger("mail-triage")
-    logger.info("mail-triage %s starting at %s", __version__, url)
-    if not settings.anthropic_api_key:
+    logger = logging.getLogger("imail")
+    logger.info("imail %s starting at %s", __version__, url)
+    if not settings.api_key:
         logger.warning("ANTHROPIC_API_KEY is unset — UI will load but triage will fail.")
 
     if not args.no_browser:
         threading.Thread(target=_open_browser_when_ready, args=(url,), daemon=True).start()
 
     uvicorn.run(
-        "mail_triage.server:app",
+        "imail.server:app",
         host=host,
         port=port,
         log_level="info",
