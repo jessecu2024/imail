@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from anthropic import Anthropic
 
-from mail_triage.gmail_client import EmailMsg
+from mail_triage.providers.base import EmailMsg
 
 # System prompt is intentionally long & stable so it can be cached.
 # Variable bits (the email, the user's name) live in the user message.
@@ -32,11 +32,11 @@ The three tones are FIXED:
 Rules for every reply:
 
 - Sign off using only the user's first name on a new line (no full signature).
-- Match the language of the incoming email (English ↔ Chinese ↔ etc.).
+- Match the language of the incoming email (English / Chinese / etc.).
 - 2-5 sentences. No "Subject:" line, no quoted history, no markdown.
 - Address the sender by their first name if obvious from the From header,
   otherwise omit the salutation.
-- Do not invent facts. If a fact is needed, hedge ("I'll check and confirm…").
+- Do not invent facts. If a fact is needed, hedge ("I'll check and confirm...").
 
 Return ONLY a JSON object, no surrounding prose, with exactly this shape:
 
@@ -74,7 +74,6 @@ class ReplyGenerator:
 
     def generate(self, email: EmailMsg) -> ReplyTrio:
         user_msg = self._build_user_message(email)
-
         response = self._client.messages.create(
             model=self._model,
             max_tokens=1024,
@@ -87,12 +86,10 @@ class ReplyGenerator:
             ],
             messages=[{"role": "user", "content": user_msg}],
         )
-
         text = "".join(block.text for block in response.content if block.type == "text")
         return parse_reply_json(text)
 
     def _build_user_message(self, email: EmailMsg) -> str:
-        # Truncate runaway bodies — long emails are mostly quoted history.
         body = email.body[:4000] if email.body else email.snippet
         return (
             f"Recipient (me): {self._signoff}\n"
@@ -106,20 +103,14 @@ class ReplyGenerator:
 
 
 def parse_reply_json(raw: str) -> ReplyTrio:
-    """Tolerantly parse the model's JSON response.
-
-    The model is instructed to return raw JSON, but defensively strip code fences
-    and extract the first JSON object if it gets chatty.
-    """
+    """Tolerantly parse the model's JSON response."""
     cleaned = raw.strip()
 
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`")
-        # Strip an optional "json" language tag at the start of the fence.
         if cleaned.lower().startswith("json"):
             cleaned = cleaned[4:]
 
-    # If anything wraps the JSON, isolate the {...} span.
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start == -1 or end == -1 or end <= start:

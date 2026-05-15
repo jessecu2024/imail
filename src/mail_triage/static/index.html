@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>mail-triage</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="app()" x-init="boot()" x-cloak>
+
+  <!-- =================== TOP BAR =================== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">✉</span>
+      <span class="name">mail-triage</span>
+    </div>
+    <div class="status">
+      <template x-if="status.anthropic_configured">
+        <span class="pill ok">Claude · <span x-text="status.model"></span></span>
+      </template>
+      <template x-if="!status.anthropic_configured">
+        <span class="pill warn">ANTHROPIC_API_KEY missing</span>
+      </template>
+    </div>
+  </header>
+
+  <!-- =================== VIEW: ACCOUNT PICKER =================== -->
+  <main x-show="view === 'picker'" class="container">
+    <h1 class="page-title">Pick a mailbox</h1>
+    <p class="page-sub">Choose an existing account, or add a new one.</p>
+
+    <div class="account-grid">
+      <template x-for="acct in accounts" :key="acct.id">
+        <button class="account-card" @click="startTriage(acct.id)">
+          <div class="account-kind" :class="acct.kind" x-text="acct.kind === 'gmail' ? 'Gmail' : (acct.imap_preset || 'IMAP').toUpperCase()"></div>
+          <div class="account-label" x-text="acct.label"></div>
+          <div class="account-username" x-text="acct.username"></div>
+          <div class="account-actions">
+            <span class="cta">Start triage →</span>
+            <span class="del" @click.stop="removeAccount(acct.id)">remove</span>
+          </div>
+        </button>
+      </template>
+
+      <button class="account-card add-card" @click="view = 'add'">
+        <div class="plus">+</div>
+        <div class="account-label">Add account</div>
+        <div class="account-username">Gmail · Outlook · 163 · QQ · Custom</div>
+      </button>
+    </div>
+  </main>
+
+  <!-- =================== VIEW: ADD ACCOUNT =================== -->
+  <main x-show="view === 'add'" class="container">
+    <button class="link-back" @click="view = 'picker'; resetForms()">← back</button>
+    <h1 class="page-title">Add an account</h1>
+
+    <div class="provider-row">
+      <template x-for="p in providers" :key="p.id">
+        <button class="provider-tile" :class="{ active: chosen === p.id }" @click="chosen = p.id">
+          <div class="provider-icon" x-text="p.icon"></div>
+          <div class="provider-name" x-text="p.name"></div>
+          <div class="provider-tag" x-text="p.tag"></div>
+        </button>
+      </template>
+    </div>
+
+    <!-- Gmail form -->
+    <section class="card" x-show="chosen === 'gmail'">
+      <h2>Gmail</h2>
+      <p class="muted">
+        Gmail uses OAuth. You need a one-time <code>credentials.json</code> from Google Cloud Console
+        (5 minutes — see <a href="https://github.com/wzh4464/mail-triage/blob/main/docs/gmail-setup.md" target="_blank">setup guide</a>).
+      </p>
+      <label>Label
+        <input type="text" x-model="form.gmail.label" placeholder="Work · Gmail" />
+      </label>
+      <label>Path to credentials.json
+        <input type="text" x-model="form.gmail.credentials_path"
+               placeholder="/Users/you/.config/mail-triage/credentials.json" />
+      </label>
+      <button class="primary" @click="addGmail()" :disabled="busy">
+        <span x-text="busy ? 'Adding…' : 'Add Gmail account'"></span>
+      </button>
+    </section>
+
+    <!-- IMAP forms (presets + custom) -->
+    <section class="card" x-show="['outlook','163','126','qq','yahoo','icloud','custom'].includes(chosen)">
+      <h2 x-text="`Add ${chosen === 'custom' ? 'custom IMAP' : chosen.toUpperCase()} account`"></h2>
+      <p class="muted" x-show="chosen !== 'custom'">
+        For <span x-text="chosen.toUpperCase()"></span>, sign in with your email and an
+        <strong>app password / 授权码</strong> (NOT your regular login password).
+        <a :href="appPasswordLink(chosen)" target="_blank" x-show="appPasswordLink(chosen)">How do I get one? →</a>
+      </p>
+
+      <label>Label
+        <input type="text" x-model="form.imap.label" placeholder="Personal · 163" />
+      </label>
+      <label>Email address
+        <input type="email" x-model="form.imap.username" placeholder="you@163.com" />
+      </label>
+      <label>App password / 授权码
+        <input type="password" x-model="form.imap.password" placeholder="••••••••••" />
+      </label>
+
+      <template x-if="chosen === 'custom'">
+        <div class="custom-host">
+          <label>IMAP host
+            <input type="text" x-model="form.imap.host" placeholder="imap.example.com" />
+          </label>
+          <label>Port
+            <input type="number" x-model.number="form.imap.port" placeholder="993" />
+          </label>
+        </div>
+      </template>
+
+      <button class="primary" @click="addImap()" :disabled="busy">
+        <span x-text="busy ? 'Adding…' : 'Add account'"></span>
+      </button>
+
+      <p class="error" x-show="error" x-text="error"></p>
+    </section>
+  </main>
+
+  <!-- =================== VIEW: TRIAGE =================== -->
+  <main x-show="view === 'triage'" class="container triage">
+
+    <!-- Empty-inbox state -->
+    <template x-if="triage.done">
+      <div class="empty">
+        <div class="emoji">✨</div>
+        <h1>Inbox zero</h1>
+        <p>No unread emails left in this mailbox.</p>
+        <button class="primary" @click="endTriage()">Back to mailboxes</button>
+      </div>
+    </template>
+
+    <template x-if="!triage.done && triage.current">
+      <div>
+        <div class="triage-meta">
+          <span x-text="`${triage.processed + 1} · ${triage.processed + triage.remaining + 1} emails`"></span>
+          <button class="link" @click="endTriage()">End session</button>
+        </div>
+
+        <article class="email-card">
+          <div class="email-header">
+            <div class="email-from">
+              <span class="muted">From</span>
+              <strong x-text="triage.current.email.sender"></strong>
+            </div>
+            <div class="email-subject" x-text="triage.current.email.subject"></div>
+          </div>
+          <pre class="email-body" x-text="triage.current.email.body"></pre>
+        </article>
+
+        <div class="replies">
+          <template x-for="tone in ['positive','neutral','negative']" :key="tone">
+            <button class="reply-card" :class="tone" @click="chooseReply(tone)" :disabled="busy">
+              <div class="reply-tone">
+                <span class="key" x-text="tone === 'positive' ? '1' : tone === 'neutral' ? '2' : '3'"></span>
+                <span class="label" x-text="tone.toUpperCase()"></span>
+              </div>
+              <p class="reply-body" x-text="triage.current.replies[tone]"></p>
+            </button>
+          </template>
+        </div>
+
+        <footer class="triage-footer">
+          <span class="hint">
+            <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> save draft &nbsp;·&nbsp;
+            <kbd>S</kbd> skip &nbsp;·&nbsp;
+            <kbd>Q</kbd> end
+          </span>
+          <button class="link" @click="skip()" :disabled="busy">skip</button>
+        </footer>
+
+        <p class="status-line" x-text="message" x-show="message"></p>
+      </div>
+    </template>
+
+    <!-- Loading the next email -->
+    <template x-if="!triage.done && !triage.current">
+      <div class="loading">
+        <div class="spinner"></div>
+        <p>Drafting three replies…</p>
+      </div>
+    </template>
+
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

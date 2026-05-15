@@ -1,116 +1,61 @@
-"""Typer-powered CLI: `mail-triage` after install, or `python -m mail_triage`."""
+"""Entrypoint: `mail-triage` boots the FastAPI server and opens a browser tab."""
 
 from __future__ import annotations
 
-from typing import Annotated
+import argparse
+import contextlib
+import logging
+import threading
+import time
+import webbrowser
 
-import typer
+import uvicorn
 
-from mail_triage import __version__, ui
+from mail_triage import __version__
 from mail_triage.config import load_settings
-from mail_triage.gmail_client import EmailMsg, GmailClient
-from mail_triage.reply_generator import ReplyGenerator, ReplyTrio
-
-app = typer.Typer(
-    help="Triage your inbox: 3 LLM-drafted replies per email, pick one with a keypress.",
-    no_args_is_help=False,
-    add_completion=False,
-)
 
 
-@app.callback(invoke_without_command=True)
-def _root(ctx: typer.Context) -> None:
-    """Default action when no subcommand is given is `triage`."""
-    if ctx.invoked_subcommand is None:
-        ctx.invoke(triage)
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="mail-triage", description="Inbox triage as a local app.")
+    parser.add_argument("--host", default=None, help="Bind address (default 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=None, help="Port (default 8765)")
+    parser.add_argument("--no-browser", action="store_true", help="Don't auto-open a browser tab")
+    parser.add_argument("--version", action="version", version=f"mail-triage {__version__}")
+    args = parser.parse_args()
 
+    settings = load_settings(require_anthropic=False)
+    host = args.host or settings.server_host
+    port = args.port or settings.server_port
+    url = f"http://{host}:{port}"
 
-@app.command()
-def version() -> None:
-    """Print the installed version."""
-    ui.status(f"mail-triage v{__version__}")
-
-
-@app.command()
-def triage(
-    limit: Annotated[int, typer.Option(help="Max unread emails to triage.")] = 20,
-    archive: Annotated[
-        bool, typer.Option("--archive/--keep", help="Archive emails after drafting a reply.")
-    ] = False,
-) -> None:
-    """Walk your unread inbox and draft a reply per email."""
-    settings = load_settings()
-
-    ui.banner("mail-triage")
-    ui.status(f"Model: [cyan]{settings.anthropic_model}[/cyan]")
-    ui.status(f"Sign-off: [cyan]{settings.user_signoff}[/cyan]")
-    ui.status("Connecting to Gmail…", style="dim")
-
-    gmail = GmailClient(
-        credentials_path=settings.gmail_credentials_path,
-        token_path=settings.gmail_token_path,
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(levelname)-5s  %(name)s — %(message)s",
+        datefmt="%H:%M:%S",
     )
-    generator = ReplyGenerator(
-        api_key=settings.anthropic_api_key,
-        model=settings.anthropic_model,
-        user_signoff=settings.user_signoff,
+    logger = logging.getLogger("mail-triage")
+    logger.info("mail-triage %s starting at %s", __version__, url)
+    if not settings.anthropic_api_key:
+        logger.warning("ANTHROPIC_API_KEY is unset — UI will load but triage will fail.")
+
+    if not args.no_browser:
+        threading.Thread(target=_open_browser_when_ready, args=(url,), daemon=True).start()
+
+    uvicorn.run(
+        "mail_triage.server:app",
+        host=host,
+        port=port,
+        log_level="info",
+        access_log=False,
     )
 
-    emails = gmail.fetch_unread(limit=limit)
-    if not emails:
-        ui.status("✨ Inbox is clean — no unread messages.", style="bold green")
-        raise typer.Exit(code=0)
 
-    ui.status(f"Found [bold]{len(emails)}[/bold] unread emails. Let's go.\n")
-
-    for i, email in enumerate(emails, start=1):
-        decision = _handle_one(email, generator, gmail, archive, i, len(emails))
-        if decision == "quit":
-            ui.status("\nStopped early. Bye.", style="dim")
-            return
-
-    ui.banner("Done")
-
-
-def _handle_one(
-    email: EmailMsg,
-    generator: ReplyGenerator,
-    gmail: GmailClient,
-    archive: bool,
-    index: int,
-    total: int,
-) -> str:
-    """Process a single email; return 'continue' or 'quit'."""
-    ui.show_header(index, total, email)
-
-    try:
-        trio: ReplyTrio = generator.generate(email)
-    except Exception as exc:  # network / API failure shouldn't kill the loop
-        ui.status(f"  ⚠ Reply generation failed: {exc}", style="red")
-        return "continue"
-
-    ui.show_replies(trio)
-    choice = ui.ask_choice()
-
-    if choice == "q":
-        return "quit"
-    if choice == "s":
-        ui.status("  ↷ Skipped.\n", style="dim")
-        return "continue"
-
-    selected = {"1": trio.positive, "2": trio.neutral, "3": trio.negative}[choice]
-    draft_id = gmail.create_draft(email, selected)
-    ui.status(f"  ✓ Draft saved (id={draft_id[:12]}…).", style="green")
-
-    if archive:
-        gmail.archive(email)
-        ui.status("  ✓ Archived.\n", style="green")
-    else:
-        gmail.mark_read(email)
-        ui.status("  ✓ Marked as read.\n", style="green")
-
-    return "continue"
+def _open_browser_when_ready(url: str) -> None:
+    """Tiny delay so uvicorn binds before the browser hits the URL."""
+    time.sleep(0.8)
+    with contextlib.suppress(webbrowser.Error):
+        webbrowser.open(url)
 
 
 if __name__ == "__main__":
-    app()
+    main()

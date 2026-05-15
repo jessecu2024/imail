@@ -1,15 +1,15 @@
 [project]
 name = "mail-triage"
-version = "0.1.0"
-description = "Triage your inbox in seconds: 3 LLM-generated reply versions per email, pick one with a single keypress."
+version = "0.2.0"
+description = "Inbox triage as a local app: log in to Gmail / Outlook / 163 and clear emails with 3-version LLM-drafted replies."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Jie Xu" }]
-keywords = ["email", "gmail", "llm", "anthropic", "claude", "productivity"]
+keywords = ["email", "gmail", "outlook", "imap", "llm", "anthropic", "claude", "productivity"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "Environment :: Console",
+  "Environment :: Web Environment",
   "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3 :: Only",
@@ -17,16 +17,18 @@ classifiers = [
 ]
 dependencies = [
   "anthropic>=0.39.0",
+  "fastapi>=0.115.0",
   "google-api-python-client>=2.150.0",
   "google-auth-httplib2>=0.2.0",
   "google-auth-oauthlib>=1.2.1",
+  "keyring>=25.5.0",
+  "pydantic>=2.9.0",
   "python-dotenv>=1.0.1",
-  "rich>=13.9.0",
-  "typer>=0.15.0",
+  "uvicorn[standard]>=0.32.0",
 ]
 
 [project.scripts]
-mail-triage = "mail_triage.cli:app"
+mail-triage = "mail_triage.cli:main"
 
 [project.urls]
 Repository = "https://github.com/wzh4464/mail-triage"
@@ -34,11 +36,11 @@ Issues = "https://github.com/wzh4464/mail-triage/issues"
 
 [dependency-groups]
 dev = [
+  "httpx>=0.27.0",            # FastAPI TestClient dep
   "mypy>=1.13.0",
   "pytest>=8.3.0",
   "pytest-cov>=6.0.0",
   "ruff>=0.8.0",
-  "types-requests>=2.32.0.20240914",
 ]
 
 [build-system]
@@ -47,6 +49,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mail_triage"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/mail_triage/static" = "mail_triage/static"
 
 # ============================================================
 # Ruff — linter + formatter
@@ -87,17 +92,16 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
-ignore_missing_imports = true   # Google API libs lack stubs
+ignore_missing_imports = true   # 3rd-party libs without stubs
 
-# google-* libraries don't ship type stubs, so we cannot type-check their calls.
+# google-* + keyring lack type stubs; let those module calls through.
 [[tool.mypy.overrides]]
 module = ["google.*", "googleapiclient.*", "google_auth_oauthlib.*"]
 ignore_errors = true
 follow_imports = "skip"
 
-# Suppress untyped-call complaints on calls into these unstubbed libs.
 [[tool.mypy.overrides]]
-module = "mail_triage.gmail_client"
+module = ["mail_triage.providers.gmail", "mail_triage.providers.imap", "mail_triage.accounts"]
 disallow_untyped_calls = false
 
 # ============================================================

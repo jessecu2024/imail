@@ -1,13 +1,8 @@
-"""Thin wrapper around the Gmail API for the triage workflow.
-
-Scope: read unread messages, create drafts, mark as read, archive.
-Auth: OAuth installed-app flow — first run opens a browser; token cached on disk.
-"""
+"""Gmail provider — OAuth installed-app flow + Gmail API."""
 
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
@@ -17,6 +12,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+from mail_triage.providers.base import EmailMsg, ProviderError
+
 # Read inbox + draft + modify labels. No "send" — drafts only by design.
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -25,19 +22,7 @@ SCOPES = [
 ]
 
 
-@dataclass(frozen=True)
-class EmailMsg:
-    """Minimal structured email payload used by the rest of the app."""
-
-    id: str
-    thread_id: str
-    sender: str
-    subject: str
-    snippet: str
-    body: str  # plain-text body (best-effort)
-
-
-class GmailClient:
+class GmailProvider:
     """Authenticated Gmail API client."""
 
     def __init__(self, credentials_path: Path, token_path: Path) -> None:
@@ -61,7 +46,7 @@ class GmailClient:
             creds.refresh(Request())
         else:
             if not self._credentials_path.exists():
-                raise FileNotFoundError(
+                raise ProviderError(
                     f"Gmail OAuth client file not found at {self._credentials_path}. "
                     "See docs/gmail-setup.md for how to create one."
                 )
@@ -73,10 +58,9 @@ class GmailClient:
         return creds
 
     # ------------------------------------------------------------------
-    # Public API
+    # MailProvider surface
     # ------------------------------------------------------------------
     def fetch_unread(self, limit: int = 20) -> list[EmailMsg]:
-        """Return the most recent unread messages in INBOX."""
         resp = (
             self._service.users()
             .messages()
@@ -86,7 +70,6 @@ class GmailClient:
         return [self._get_message(m["id"]) for m in resp.get("messages", [])]
 
     def create_draft(self, email: EmailMsg, body: str) -> str:
-        """Create a reply draft in the same thread. Returns the draft id."""
         reply = EmailMessage()
         reply.set_content(body)
         reply["To"] = email.sender
@@ -117,6 +100,10 @@ class GmailClient:
             id=email.id,
             body={"removeLabelIds": ["INBOX", "UNREAD"]},
         ).execute()
+
+    def close(self) -> None:
+        # The Discovery client holds no long-lived sockets.
+        return None
 
     # ------------------------------------------------------------------
     # Helpers
@@ -159,8 +146,6 @@ def _extract_plain_body(payload: dict[str, Any]) -> str:
         nested = _extract_plain_body(part)
         if nested:
             return nested
-
-    # Fall back to snippet if nothing else.
     return ""
 
 

@@ -13,7 +13,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env from the directory the user is running in (or its parents).
 load_dotenv()
 
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "mail-triage"
@@ -25,15 +24,21 @@ class Settings:
 
     anthropic_api_key: str
     anthropic_model: str
-    gmail_credentials_path: Path
-    gmail_token_path: Path
-    user_signoff: str  # name to sign emails with, e.g. "Jie"
+    gmail_credentials_path: Path  # default path; per-account paths override
+    user_signoff: str
+    config_dir: Path
+    server_host: str
+    server_port: int
 
 
-def load_settings() -> Settings:
-    """Read settings from env / defaults. Raises if a required secret is missing."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+def load_settings(require_anthropic: bool = True) -> Settings:
+    """Read settings from env / defaults.
+
+    Set ``require_anthropic=False`` to load paths without enforcing the API key,
+    e.g. during initial account setup.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if require_anthropic and not api_key:
         raise RuntimeError(
             "ANTHROPIC_API_KEY is not set. Add it to a .env file or export it in your shell."
         )
@@ -44,12 +49,13 @@ def load_settings() -> Settings:
     credentials_path = Path(
         os.environ.get("GMAIL_CREDENTIALS_PATH", config_dir / "credentials.json")
     )
-    token_path = Path(os.environ.get("GMAIL_TOKEN_PATH", config_dir / "token.json"))
 
     return Settings(
         anthropic_api_key=api_key,
         anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
         gmail_credentials_path=credentials_path,
-        gmail_token_path=token_path,
         user_signoff=os.environ.get("USER_SIGNOFF", "Jie"),
+        config_dir=config_dir,
+        server_host=os.environ.get("MAIL_TRIAGE_HOST", "127.0.0.1"),
+        server_port=int(os.environ.get("MAIL_TRIAGE_PORT", "8765")),
     )

@@ -1,42 +1,72 @@
 # mail-triage
 
-> Triage your inbox in seconds. Three LLM-drafted replies per email; pick one with a single keypress.
+> Inbox triage as a local app. Log in once to Gmail, Outlook, or 163 — then clear your unread
+> emails by picking from three LLM-drafted replies per message.
 
-For people who wake up to dozens of emails and want to clear them in five seconds each.
-`mail-triage` walks your unread Gmail inbox, asks Claude to draft **three reply versions**
-(*positive · neutral · negative*) for every message, and lets you pick the one you like —
-the chosen draft is saved straight to your Gmail Drafts folder.
+You wake up to 30 emails. Each one needs a yes / no / "let me get back to you." This app fetches
+your unread inbox, asks Claude for **three reply versions** per email (*positive · neutral · negative*),
+and saves your pick as a Gmail/IMAP draft. You stay in control of every Send button.
 
-You still hit "Send" yourself. The tool just removes the staring-at-a-blinking-cursor part.
+```
+┌──────────────────────────────────────────────────────────────┐
+│  From       advisor@uni.edu                                  │
+│  Subject    Can you join the panel on Thursday?              │
+│  …                                                           │
+└──────────────────────────────────────────────────────────────┘
+  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+  │ 1·POSITIVE  │   │ 2·NEUTRAL   │   │ 3·NEGATIVE  │
+  │ Yes, I'll … │   │ Let me  …   │   │ Thanks for  │
+  │             │   │             │   │ asking, but │
+  └─────────────┘   └─────────────┘   └─────────────┘
+   1 / 2 / 3 → save draft     S → skip     Q → end session
+```
 
 ## Features
 
-- ✦ Fetches unread emails from your Gmail inbox (read + draft scopes; **never sends on its own**).
-- ✦ Generates three tonally distinct replies in one Anthropic call.
-- ✦ Prompt caching keeps per-email latency low.
-- ✦ Single-key picker (`1`/`2`/`3`/`s`/`q`).
-- ✦ Saves the chosen draft inside the original thread.
-- ✦ Optionally archives processed emails (`--archive`).
-- ✦ Drop-in `.env` config; no global state.
+- ✦ **Multi-provider** — Gmail (OAuth), and any IMAP mailbox: Outlook, 163, 126, QQ, Yahoo, iCloud, custom hosts.
+- ✦ **Local web app** — `mail-triage` boots a FastAPI server and pops your browser to `http://127.0.0.1:8765`.
+- ✦ **Drafts only** — never sends mail on your behalf. You press *Send* yourself in your normal mail client.
+- ✦ **Secrets in OS keyring** — IMAP app passwords go to macOS Keychain (or platform equivalent), not a plain text file.
+- ✦ **Three drafts per email in a single API call** — fast, cheap, self-consistent.
+- ✦ **Prompt caching** keeps per-email latency low across a session.
+- ✦ **Keyboard-first** — `1` / `2` / `3` to save a draft, `S` to skip, `Q` to end.
 
 ## Quick Start
 
 ```bash
-# 1. Install (uv recommended)
+# 1. Install deps
 uv sync
 
-# 2. Set up secrets
+# 2. Set your Anthropic key
 cp .env.example .env
 # → put your ANTHROPIC_API_KEY in .env
-# → drop Gmail OAuth `credentials.json` into ~/.config/mail-triage/
-#   (see docs/gmail-setup.md for how to get one — 5-minute Google Cloud Console flow)
 
-# 3. Run
+# 3. Launch the app
 uv run mail-triage
+# → opens http://127.0.0.1:8765 in your browser
 ```
 
-First run will pop a browser window for Gmail OAuth consent; subsequent runs reuse the
-cached token at `~/.config/mail-triage/token.json`.
+First run will show an "Add account" screen. Pick a provider:
+
+- **Gmail** — drop your `credentials.json` (see [docs/gmail-setup.md](docs/gmail-setup.md))
+  and the first triage triggers the OAuth consent screen.
+- **Outlook / 163 / 126 / QQ / Yahoo / iCloud** — sign in with your email + an
+  **app password / 授权码** (see [docs/imap-setup.md](docs/imap-setup.md)).
+- **Custom** — enter any IMAPS host + port.
+
+After that, click your mailbox card → walk through unread emails → press 1/2/3 → drafts land in your Drafts folder.
+
+## Configuration
+
+All settings come from `.env` (see `.env.example`):
+
+| Variable                  | Default                            | Notes                                    |
+|---------------------------|------------------------------------|------------------------------------------|
+| `ANTHROPIC_API_KEY`       | *(required)*                       | Your Anthropic key                       |
+| `ANTHROPIC_MODEL`         | `claude-haiku-4-5-20251001`        | Use `claude-sonnet-4-6` for sharper drafts |
+| `USER_SIGNOFF`            | `Jie`                              | Name used in reply sign-offs              |
+| `MAIL_TRIAGE_PORT`        | `8765`                             | Local server port                         |
+| `MAIL_TRIAGE_CONFIG_DIR`  | `~/.config/mail-triage`            | Where accounts.json and tokens live      |
 
 ## Development
 
@@ -52,15 +82,33 @@ uv run pytest                # tests
 
 ```
 src/mail_triage/
-  cli.py               Typer entrypoint — main loop
-  config.py            env / secrets loader
-  gmail_client.py      Gmail API wrapper (OAuth + fetch + draft)
-  reply_generator.py   Anthropic call + JSON parser
-  ui.py                Rich-based terminal renderer
+  cli.py                  Launcher — boots uvicorn + opens browser
+  config.py               .env loader
+  server.py               FastAPI app — status, accounts, triage session
+  accounts.py             Account manifest + keyring-backed secrets
+  reply_generator.py      Anthropic call + JSON parser
+  providers/
+    base.py               EmailMsg + MailProvider Protocol
+    gmail.py              Gmail API provider (OAuth)
+    imap.py               Generic IMAP provider with presets
+  static/
+    index.html            Single-page UI
+    app.js                Alpine.js component
+    style.css             Dark theme
 
-tests/                 pytest suites
-docs/gmail-setup.md    Google Cloud Console walk-through
+docs/
+  gmail-setup.md          One-time Google Cloud Console walk-through
+  imap-setup.md           How to get app passwords on each provider
+
+tests/                    pytest suites
 ```
+
+## Security Notes
+
+- **No `gmail.send` scope is requested**; the Gmail provider can only fetch, draft, mark-read, archive.
+- **IMAP app passwords are stored in the OS keyring**, not in `accounts.json` or `.env`.
+- **OAuth tokens** are saved to `~/.config/mail-triage/token-<account-id>.json` (mode 0600).
+- This is a personal tool. Don't host it on a shared machine without thinking about who can reach `127.0.0.1:8765`.
 
 ## License
 
