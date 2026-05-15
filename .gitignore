@@ -1,0 +1,54 @@
+# --- Secrets & local config (NEVER commit) ---
+.env
+.env.local
+*.env
+credentials.json
+token.json
+.config/
+
+# --- Byte-compiled / cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# --- Distribution / packaging ---
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+MANIFEST
+
+# --- uv / pip / virtualenvs ---
+.venv/
+venv/
+env/
+.uv-cache/
+
+# --- Test / type / lint caches ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.cache/
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+
+# --- Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS noise ---
+.DS_Store
+Thumbs.db
