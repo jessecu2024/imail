@@ -31,8 +31,8 @@ dependencies = [
 mail-triage = "mail_triage.cli:main"
 
 [project.urls]
-Repository = "https://github.com/wzh4464/mail-triage"
-Issues = "https://github.com/wzh4464/mail-triage/issues"
+Repository = "https://github.com/jessecu2024/mail-triage"
+Issues = "https://github.com/jessecu2024/mail-triage/issues"
 
 [dependency-groups]
 dev = [

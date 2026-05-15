@@ -102,7 +102,7 @@ class ImapProvider:
     def _send_imap_id(conn: imaplib.IMAP4_SSL) -> None:
         """163/QQ refuse access without a client ID. Send something benign."""
         client_id = (
-            '("name" "mail-triage" "version" "0.2" "vendor" "github.com/wzh4464/mail-triage")'
+            '("name" "mail-triage" "version" "0.2" "vendor" "github.com/jessecu2024/mail-triage")'
         )
         # imaplib doesn't expose ID directly; piggyback on _simple_command.
         typ, _ = conn._simple_command("ID", client_id)
