@@ -37,9 +37,12 @@ class Account:
     imap_host: str = ""
     imap_port: int = 993
     imap_preset: str = ""  # 'outlook' | '163' | '126' | 'qq' | 'yahoo' | 'icloud' | '' (custom)
+    smtp_host: str = ""  # populated for IMAP accounts, "" means "use preset default"
+    smtp_port: int = 0  # 0 means "use preset default"
+    smtp_use_ssl: bool = True
     gmail_credentials_path: str = ""  # filesystem path to Google OAuth client JSON
 
-    def to_dict(self) -> dict[str, str | int]:
+    def to_dict(self) -> dict[str, str | int | bool]:
         return {
             "id": self.id,
             "kind": self.kind,
@@ -48,11 +51,14 @@ class Account:
             "imap_host": self.imap_host,
             "imap_port": self.imap_port,
             "imap_preset": self.imap_preset,
+            "smtp_host": self.smtp_host,
+            "smtp_port": self.smtp_port,
+            "smtp_use_ssl": self.smtp_use_ssl,
             "gmail_credentials_path": self.gmail_credentials_path,
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, str | int]) -> Account:
+    def from_dict(cls, data: dict[str, str | int | bool]) -> Account:
         return cls(
             id=str(data["id"]),
             kind=data["kind"],  # type: ignore[arg-type]
@@ -61,6 +67,9 @@ class Account:
             imap_host=str(data.get("imap_host", "")),
             imap_port=int(data.get("imap_port", 993) or 993),
             imap_preset=str(data.get("imap_preset", "")),
+            smtp_host=str(data.get("smtp_host", "")),
+            smtp_port=int(data.get("smtp_port", 0) or 0),
+            smtp_use_ssl=bool(data.get("smtp_use_ssl", True)),
             gmail_credentials_path=str(data.get("gmail_credentials_path", "")),
         )
 
@@ -131,12 +140,22 @@ def open_provider(account: Account) -> MailProvider:
         host = account.imap_host or (preset.host if preset else "")
         if not host:
             raise RuntimeError(f"Account {account.id} has no IMAP host configured.")
+        # SMTP details: prefer fields stored on the account, fall back to the preset.
+        # Existing accounts.json files (pre-0.4) won't have smtp_* yet — preset fills in.
+        smtp_host = account.smtp_host or (preset.smtp_host if preset else "")
+        smtp_port = account.smtp_port or (preset.smtp_port if preset else 465)
+        smtp_use_ssl = (
+            account.smtp_use_ssl if account.smtp_host else (preset.smtp_use_ssl if preset else True)
+        )
         return ImapProvider(
             host=host,
             port=account.imap_port or 993,
             username=account.username,
             password=password,
             needs_imap_id=bool(preset and preset.needs_imap_id),
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            smtp_use_ssl=smtp_use_ssl,
         )
 
     raise RuntimeError(f"Unknown provider kind: {account.kind!r}")

@@ -12,7 +12,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-from imail.providers.base import EmailMsg, ProviderError
+from imail.providers.base import EmailMsg, FolderKind, ProviderError
 
 # Read inbox + draft + modify labels. No "send" — drafts only by design.
 SCOPES = [
@@ -88,6 +88,31 @@ class GmailProvider:
             .execute()
         )
         return str(draft["id"])
+
+    def send(self, email: EmailMsg, body: str) -> None:
+        # Sending would require requesting an extra OAuth scope (gmail.send) on top
+        # of the read/draft/modify set this provider asks for. Until we add that
+        # explicit re-consent flow, surface a friendly error to the UI.
+        raise ProviderError(
+            "Gmail send isn't wired up yet — it needs an extra gmail.send OAuth scope "
+            "and a re-authorization. For now use 'Save as draft' and press Send from "
+            "the Gmail web UI."
+        )
+
+    def list_folder(self, kind: FolderKind, limit: int = 50) -> list[EmailMsg]:
+        raise ProviderError(
+            "Gmail folder browsing isn't wired up yet — use the Inbox triage flow "
+            "or browse in the Gmail web UI."
+        )
+
+    def fetch_message(self, kind: FolderKind, message_id: str) -> EmailMsg:
+        raise ProviderError("Gmail message fetch by id isn't wired up yet.")
+
+    def delete_message(self, kind: FolderKind, message_id: str) -> None:
+        raise ProviderError("Gmail message delete isn't wired up yet.")
+
+    def move_message(self, from_kind: FolderKind, to_kind: FolderKind, message_id: str) -> None:
+        raise ProviderError("Gmail message move isn't wired up yet.")
 
     def mark_read(self, email: EmailMsg) -> None:
         self._service.users().messages().modify(

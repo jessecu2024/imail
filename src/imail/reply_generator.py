@@ -16,9 +16,21 @@ from openai import OpenAI
 from imail.providers.base import EmailMsg
 
 # Stable system prompt — long, so the cached prefix is large and re-used.
-SYSTEM_PROMPT = """You are an email-reply assistant. For every email the user shows you,
-draft THREE complete reply versions, each tonally distinct, so the user can
-pick one in under five seconds.
+SYSTEM_PROMPT = """You are an email triage assistant. For every email the user shows you,
+do TWO things in one response:
+
+STEP 1 — Spam classification. Set "is_spam" to true if the email is:
+  - Bulk advertising / marketing / newsletter / promo blast
+  - Phishing / scam / fake invoice / fake "account locked" warning
+  - Automated notification with no realistic reply expected (receipts,
+    "your password was changed", system pings)
+  - Sender's domain mismatches the supposed brand
+Set "is_spam" to false for genuine person-to-person mail (work, school,
+friends, real questions, real requests) — even if it's an automated
+calendar invite or commercial transaction where a reply would be useful.
+
+STEP 2 — Draft THREE reply versions, each tonally distinct, so the user
+can pick one in under five seconds.
 
 The three tones are FIXED:
 
@@ -38,26 +50,32 @@ Rules for every reply:
   otherwise omit the salutation.
 - Do not invent facts. If a fact is needed, hedge ("I'll check and confirm...").
 
+If is_spam is true, set all three reply fields to the empty string "" —
+don't waste tokens drafting replies the user will never send.
+
 Return ONLY a JSON object, no surrounding prose, with exactly this shape:
 
 {
-  "positive": "...full reply text...",
-  "neutral":  "...full reply text...",
-  "negative": "...full reply text..."
+  "is_spam": true|false,
+  "positive": "...full reply text or empty...",
+  "neutral":  "...full reply text or empty...",
+  "negative": "...full reply text or empty..."
 }
 """
 
 
 @dataclass(frozen=True)
 class ReplyTrio:
-    """Three drafts produced for a single email."""
+    """Triage output: spam flag + three tonally distinct draft replies."""
 
     positive: str
     neutral: str
     negative: str
+    is_spam: bool = False
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> dict[str, str | bool]:
         return {
+            "is_spam": self.is_spam,
             "positive": self.positive,
             "neutral": self.neutral,
             "negative": self.negative,
@@ -123,7 +141,8 @@ def parse_reply_json(raw: str) -> ReplyTrio:
     payload = json.loads(cleaned[start : end + 1])
 
     return ReplyTrio(
-        positive=str(payload["positive"]).strip(),
-        neutral=str(payload["neutral"]).strip(),
-        negative=str(payload["negative"]).strip(),
+        positive=str(payload.get("positive", "")).strip(),
+        neutral=str(payload.get("neutral", "")).strip(),
+        negative=str(payload.get("negative", "")).strip(),
+        is_spam=bool(payload.get("is_spam", False)),
     )

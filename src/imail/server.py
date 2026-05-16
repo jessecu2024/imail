@@ -16,12 +16,14 @@ Endpoints:
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import threading
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -35,8 +37,27 @@ logger = logging.getLogger("imail.server")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="imail", version="0.2.0")
+app = FastAPI(title="imail", version="1.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# Static assets change every release; tell the browser not to cache them so a
+# plain Cmd+R is always enough to pick up new JS/CSS.
+@app.middleware("http")
+async def _no_cache_static(request, call_next):  # type: ignore[no-untyped-def]
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/") or path == "/":
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
+# Make every uncaught exception return JSON so the frontend can always parse it.
+@app.exception_handler(Exception)
+async def _json_exception_handler(_request: object, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled error")
+    return JSONResponse(status_code=500, content={"detail": f"{type(exc).__name__}: {exc}"})
 
 
 # ----------------------------------------------------------------------
@@ -58,6 +79,97 @@ class _Session:
 
 
 _session: _Session | None = None
+
+
+# ----------------------------------------------------------------------
+# Pre-generated reply cache for inbox messages.
+# Keyed by "{account_id}:{message_id}". Filled by a background task fired
+# every time the inbox is listed; checked by /api/triage/single before doing
+# a fresh DeepSeek call. Memory-only, cleared at process restart.
+# ----------------------------------------------------------------------
+_inbox_cache: dict[str, tuple[EmailMsg, ReplyTrio]] = {}
+_inbox_cache_lock = threading.Lock()
+
+
+def _cache_get(account_id: str, message_id: str) -> tuple[EmailMsg, ReplyTrio] | None:
+    with _inbox_cache_lock:
+        return _inbox_cache.get(f"{account_id}:{message_id}")
+
+
+def _cache_put(account_id: str, message_id: str, email_msg: EmailMsg, trio: ReplyTrio) -> None:
+    with _inbox_cache_lock:
+        _inbox_cache[f"{account_id}:{message_id}"] = (email_msg, trio)
+
+
+def _cache_drop(account_id: str, message_id: str) -> None:
+    with _inbox_cache_lock:
+        _inbox_cache.pop(f"{account_id}:{message_id}", None)
+
+
+def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
+    """Background task: pre-generate replies for every inbox message we just listed.
+
+    Runs in FastAPI's threadpool after the inbox listing has already been sent
+    to the client, so the user sees the list immediately. Each iteration costs
+    one DeepSeek call (~$0.0002), so 50 inbox messages cost about a cent.
+    """
+    try:
+        settings = load_settings(require_api_key=True)
+    except RuntimeError:
+        return  # no API key — nothing to do
+
+    store = AccountStore.load()
+    account = store.get(account_id)
+    if account is None:
+        return
+
+    missing = [mid for mid in message_ids if _cache_get(account_id, mid) is None]
+    if not missing:
+        return
+
+    try:
+        provider = open_provider(account)
+    except ProviderError as exc:
+        logger.warning("Prefetch: open_provider failed for %s: %s", account_id, exc)
+        return
+
+    generator = ReplyGenerator(
+        api_key=settings.api_key,
+        model=settings.model,
+        user_signoff=settings.user_signoff,
+        base_url=settings.base_url,
+    )
+
+    try:
+        for mid in missing:
+            if _cache_get(account_id, mid) is not None:
+                continue
+            try:
+                email_msg = provider.fetch_message("inbox", mid)
+                trio = generator.generate(email_msg)
+                if trio.is_spam:
+                    # The model called this spam — move it out of inbox so it
+                    # stops cluttering the UI. Don't bother caching (the user
+                    # will only see it in the Junk folder).
+                    try:
+                        provider.move_message("inbox", "junk", mid)
+                        logger.info(
+                            "Spam-moved to Junk: %s/%s subject=%r",
+                            account_id,
+                            mid,
+                            email_msg.subject,
+                        )
+                    except ProviderError as exc:
+                        logger.warning("Spam detected but move-to-junk failed for %s: %s", mid, exc)
+                        _cache_put(account_id, mid, email_msg, trio)
+                else:
+                    _cache_put(account_id, mid, email_msg, trio)
+                    logger.info("Prefetched replies for %s/%s", account_id, mid)
+            except Exception as exc:
+                logger.warning("Prefetch failed for %s/%s: %s", account_id, mid, exc)
+    finally:
+        with contextlib.suppress(Exception):
+            provider.close()
 
 
 # ----------------------------------------------------------------------
@@ -99,8 +211,34 @@ class StartRequest(BaseModel):
     limit: int = Field(20, ge=1, le=100)
 
 
+class SingleTriageRequest(BaseModel):
+    account_id: str
+    kind: Literal["inbox", "drafts", "sent"] = "inbox"
+    message_id: str
+
+
 class DraftRequest(BaseModel):
     body: str = Field(..., min_length=1)
+
+
+class SendRequest(BaseModel):
+    body: str = Field(..., min_length=1)
+
+
+class MessageSummary(BaseModel):
+    id: str
+    sender: str
+    subject: str
+    date: str
+    unread: bool
+
+
+class MessageDetail(BaseModel):
+    id: str
+    sender: str
+    subject: str
+    body: str
+    date: str
 
 
 class TriageNextResponse(BaseModel):
@@ -152,6 +290,9 @@ def add_imap_account(req: AddImapRequest) -> AccountResponse:
         imap_host=host,
         imap_port=req.port or 993,
         imap_preset=req.preset,
+        smtp_host=preset.smtp_host if preset else "",
+        smtp_port=preset.smtp_port if preset else 465,
+        smtp_use_ssl=preset.smtp_use_ssl if preset else True,
     )
     store.add(account, secret=req.password)
     return _account_view(account)
@@ -183,6 +324,81 @@ def delete_account(account_id: str) -> dict[str, bool]:
     return {"ok": True}
 
 
+# ----------------------------------------------------------------------
+# Folder browsing
+# ----------------------------------------------------------------------
+@app.get("/api/folders/{account_id}/{kind}", response_model=list[MessageSummary])
+def list_folder(
+    account_id: str,
+    kind: Literal["inbox", "drafts", "sent"],
+    background_tasks: BackgroundTasks,
+) -> list[MessageSummary]:
+    _, provider = _account_provider(account_id)
+    try:
+        msgs = provider.list_folder(kind, limit=50)
+    except ProviderError as exc:
+        provider.close()
+        raise HTTPException(502, str(exc)) from exc
+    provider.close()
+
+    # Fire-and-forget: pre-generate replies for the inbox so the user gets an
+    # instant response when they click any email. Drafts/Sent don't need this.
+    if kind == "inbox" and msgs:
+        background_tasks.add_task(_warm_inbox_cache, account_id, [m.id for m in msgs])
+
+    return [
+        MessageSummary(
+            id=m.id,
+            sender=m.sender,
+            subject=m.subject,
+            date=m.date,
+            unread=m.unread,
+        )
+        for m in msgs
+    ]
+
+
+@app.get("/api/messages/{account_id}/{kind}/{message_id}", response_model=MessageDetail)
+def get_message(
+    account_id: str,
+    kind: Literal["inbox", "drafts", "sent"],
+    message_id: str,
+) -> MessageDetail:
+    _, provider = _account_provider(account_id)
+    try:
+        msg = provider.fetch_message(kind, message_id)
+    except ProviderError as exc:
+        provider.close()
+        raise HTTPException(502, str(exc)) from exc
+    provider.close()
+    return MessageDetail(
+        id=msg.id,
+        sender=msg.sender,
+        subject=msg.subject,
+        body=msg.body,
+        date=msg.date,
+    )
+
+
+@app.delete("/api/messages/{account_id}/{kind}/{message_id}")
+def delete_message(
+    account_id: str,
+    kind: Literal["inbox", "drafts", "sent"],
+    message_id: str,
+) -> dict[str, bool]:
+    _, provider = _account_provider(account_id)
+    try:
+        provider.delete_message(kind, message_id)
+    except ProviderError as exc:
+        provider.close()
+        raise HTTPException(502, str(exc)) from exc
+    provider.close()
+    return {"ok": True}
+
+
+# ----------------------------------------------------------------------
+# Triage — both batch (queue) and single-email modes
+# ----------------------------------------------------------------------
 @app.post("/api/triage/start")
 def triage_start(req: StartRequest) -> dict[str, int]:
     global _session
@@ -201,11 +417,15 @@ def triage_start(req: StartRequest) -> dict[str, int]:
         emails = provider.fetch_unread(limit=req.limit)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error opening provider")
+        raise HTTPException(500, f"Provider failed unexpectedly: {exc!r}") from exc
 
     generator = ReplyGenerator(
         api_key=settings.api_key,
         model=settings.model,
         user_signoff=settings.user_signoff,
+        base_url=settings.base_url,
     )
     _session = _Session(account=account, provider=provider, generator=generator)
     _session.queue = emails
@@ -221,9 +441,12 @@ def triage_next() -> TriageNextResponse:
         _session.current = None
         return TriageNextResponse(done=True, remaining=0)
 
-    _session.current = _session.queue.pop(0)
+    # Snapshot into a local — concurrent /api/triage/next or /skip would otherwise
+    # race on _session.current and we'd read None mid-flight.
+    email_msg = _session.queue.pop(0)
+    _session.current = email_msg
     try:
-        replies = _session.generator.generate(_session.current)
+        replies = _session.generator.generate(email_msg)
     except Exception as exc:
         raise HTTPException(502, f"Reply generation failed: {exc}") from exc
 
@@ -231,10 +454,10 @@ def triage_next() -> TriageNextResponse:
         done=False,
         remaining=len(_session.queue),
         email={
-            "id": _session.current.id,
-            "sender": _session.current.sender,
-            "subject": _session.current.subject,
-            "body": _session.current.body or _session.current.snippet,
+            "id": email_msg.id,
+            "sender": email_msg.sender,
+            "subject": email_msg.subject,
+            "body": email_msg.body or email_msg.snippet,
         },
         replies=replies,
     )
@@ -249,7 +472,108 @@ def triage_draft(req: DraftRequest) -> dict[str, str]:
         _session.provider.mark_read(_session.current)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
+    _cache_drop(_session.account.id, _session.current.id)
     return {"draft_id": draft_id}
+
+
+@app.post("/api/triage/send")
+def triage_send(req: SendRequest) -> dict[str, str]:
+    """Send the reply right now (via SMTP for IMAP accounts). Marks read on success."""
+    if _session is None or _session.current is None:
+        raise HTTPException(400, "No email is currently being triaged.")
+
+    # The send itself must succeed or we return an error.
+    try:
+        _session.provider.send(_session.current, req.body)
+    except ProviderError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+    # Marking the original as read is best-effort. If the user paused for a
+    # long time before clicking send, the IMAP socket may have been idle-killed
+    # by the server (163/QQ in particular). We don't want to surface a "failed"
+    # state to the user when the actual send went through.
+    try:
+        _session.provider.mark_read(_session.current)
+    except Exception as exc:
+        logger.warning("mark_read after send failed (non-fatal): %s", exc)
+    _cache_drop(_session.account.id, _session.current.id)
+    return {"status": "sent"}
+
+
+@app.post("/api/triage/single")
+def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
+    """Open a triage session against a single specific email (no queue).
+
+    After this returns, /api/triage/send /draft /skip /end work the same way as
+    they do during a batch session — they operate on _session.current.
+    """
+    global _session
+    if _session is not None:
+        _session.close()
+        _session = None
+
+    settings = load_settings(require_api_key=True)
+    store = AccountStore.load()
+    account = store.get(req.account_id)
+    if account is None:
+        raise HTTPException(404, "Account not found.")
+
+    # Cache hit? Skip both the IMAP fetch_message AND the DeepSeek call —
+    # we already have everything from the prefetch background task.
+    cached = _cache_get(req.account_id, req.message_id) if req.kind == "inbox" else None
+
+    try:
+        provider = open_provider(account)
+    except ProviderError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+    generator = ReplyGenerator(
+        api_key=settings.api_key,
+        model=settings.model,
+        user_signoff=settings.user_signoff,
+        base_url=settings.base_url,
+    )
+
+    if cached is not None:
+        email_msg, replies = cached
+        logger.info(
+            "Cache HIT for %s/%s — replies served instantly", req.account_id, req.message_id
+        )
+    else:
+        try:
+            email_msg = provider.fetch_message(req.kind, req.message_id)
+        except ProviderError as exc:
+            provider.close()
+            raise HTTPException(502, str(exc)) from exc
+        try:
+            replies = generator.generate(email_msg)
+        except Exception as exc:
+            provider.close()
+            raise HTTPException(502, f"Reply generation failed: {exc}") from exc
+
+        # If live classification flags this as spam, push it out of inbox now.
+        if req.kind == "inbox" and replies.is_spam:
+            with contextlib.suppress(ProviderError):
+                provider.move_message("inbox", "junk", req.message_id)
+                logger.info("Spam-moved on click: %s/%s", req.account_id, req.message_id)
+        elif req.kind == "inbox":
+            _cache_put(req.account_id, req.message_id, email_msg, replies)
+
+    _session = _Session(account=account, provider=provider, generator=generator)
+    _session.queue = []  # empty — no auto-advance after the user picks
+    _session.current = email_msg
+
+    return TriageNextResponse(
+        done=False,
+        remaining=0,
+        email={
+            "id": email_msg.id,
+            "sender": email_msg.sender,
+            "subject": email_msg.subject,
+            "body": email_msg.body or email_msg.snippet,
+        },
+        replies=replies,
+    )
 
 
 @app.post("/api/triage/skip")
@@ -281,3 +605,16 @@ def _account_view(account: Account) -> AccountResponse:
         imap_host=account.imap_host,
         imap_preset=account.imap_preset,
     )
+
+
+def _account_provider(account_id: str) -> tuple[Account, MailProvider]:
+    """Look up an account by id and open a fresh provider. 404s if missing."""
+    store = AccountStore.load()
+    account = store.get(account_id)
+    if account is None:
+        raise HTTPException(404, "Account not found.")
+    try:
+        provider = open_provider(account)
+    except ProviderError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return account, provider

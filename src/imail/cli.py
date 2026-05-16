@@ -36,7 +36,7 @@ def main() -> None:
     logger = logging.getLogger("imail")
     logger.info("imail %s starting at %s", __version__, url)
     if not settings.api_key:
-        logger.warning("ANTHROPIC_API_KEY is unset — UI will load but triage will fail.")
+        logger.warning("DEEPSEEK_API_KEY is unset — UI will load but triage will fail.")
 
     if not args.no_browser:
         threading.Thread(target=_open_browser_when_ready, args=(url,), daemon=True).start()
@@ -46,7 +46,7 @@ def main() -> None:
         host=host,
         port=port,
         log_level="info",
-        access_log=False,
+        access_log=True,  # show every HTTP request — helps debug issues against real mailboxes
     )
 
 

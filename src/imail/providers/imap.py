@@ -12,65 +12,115 @@ Known quirks handled here:
 
 from __future__ import annotations
 
+import contextlib
 import email
 import email.policy
 import imaplib
+import smtplib
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from email.header import decode_header, make_header
 from email.message import EmailMessage, Message
 
-from imail.providers.base import EmailMsg, ProviderError
+from imail.providers.base import EmailMsg, FolderKind, ProviderError
 
-DEFAULT_PORT = 993
-COMMON_DRAFT_FOLDERS = ["Drafts", "[Gmail]/Drafts", "草稿箱", "Brouillons", "INBOX.Drafts"]
+# RFC 2971 IMAP ID extension isn't in Python's stdlib command table.
+# Register it as valid in AUTH and SELECTED states so _simple_command("ID", ...)
+# doesn't raise KeyError. Required to log in to 163 / QQ servers.
+imaplib.Commands.setdefault("ID", ("AUTH", "SELECTED"))
+
+DEFAULT_IMAP_PORT = 993
+DEFAULT_SMTP_PORT = 465
+
+# Per-folder kind: SPECIAL-USE attribute + fallback name list.
+FOLDER_HINTS: dict[str, tuple[str, list[str]]] = {
+    "inbox": ("\\Inbox", ["INBOX"]),
+    "drafts": ("\\Drafts", ["Drafts", "[Gmail]/Drafts", "草稿箱", "Brouillons", "INBOX.Drafts"]),
+    "sent": ("\\Sent", ["Sent", "Sent Items", "[Gmail]/Sent Mail", "已发送", "INBOX.Sent"]),
+    "junk": ("\\Junk", ["Junk", "Spam", "[Gmail]/Spam", "垃圾邮件", "Junk E-mail", "INBOX.Junk"]),
+}
 
 
 @dataclass(frozen=True)
 class ImapPreset:
-    """Connection settings for a well-known mail host."""
+    """Connection settings for a well-known mail host (IMAP + SMTP)."""
 
-    host: str
-    port: int = DEFAULT_PORT
+    host: str  # IMAP host
+    smtp_host: str  # SMTP host
+    port: int = DEFAULT_IMAP_PORT
+    smtp_port: int = DEFAULT_SMTP_PORT
+    smtp_use_ssl: bool = True  # False → STARTTLS on the given port (usually 587)
     needs_imap_id: bool = False  # 163 / QQ requirement
 
 
 # Hard-coded presets keep the UI buttons "just work" for the common cases.
 PRESETS: dict[str, ImapPreset] = {
-    "outlook": ImapPreset(host="outlook.office365.com"),
-    "163": ImapPreset(host="imap.163.com", needs_imap_id=True),
-    "126": ImapPreset(host="imap.126.com", needs_imap_id=True),
-    "qq": ImapPreset(host="imap.qq.com", needs_imap_id=True),
-    "yahoo": ImapPreset(host="imap.mail.yahoo.com"),
-    "icloud": ImapPreset(host="imap.mail.me.com"),
+    "outlook": ImapPreset(
+        host="outlook.office365.com",
+        smtp_host="smtp-mail.outlook.com",
+        smtp_port=587,
+        smtp_use_ssl=False,
+    ),
+    "163": ImapPreset(host="imap.163.com", smtp_host="smtp.163.com", needs_imap_id=True),
+    "126": ImapPreset(host="imap.126.com", smtp_host="smtp.126.com", needs_imap_id=True),
+    "qq": ImapPreset(host="imap.qq.com", smtp_host="smtp.qq.com", needs_imap_id=True),
+    "yahoo": ImapPreset(host="imap.mail.yahoo.com", smtp_host="smtp.mail.yahoo.com"),
+    "icloud": ImapPreset(
+        host="imap.mail.me.com",
+        smtp_host="smtp.mail.me.com",
+        smtp_port=587,
+        smtp_use_ssl=False,
+    ),
 }
 
 
 class ImapProvider:
-    """Connect over IMAPS, fetch unread mail, store drafts via APPEND."""
+    """Connect over IMAPS, fetch unread mail, store drafts via APPEND, send via SMTP."""
 
     def __init__(
         self,
         host: str,
         username: str,
         password: str,
-        port: int = DEFAULT_PORT,
+        port: int = DEFAULT_IMAP_PORT,
         needs_imap_id: bool = False,
+        smtp_host: str = "",
+        smtp_port: int = DEFAULT_SMTP_PORT,
+        smtp_use_ssl: bool = True,
     ) -> None:
         self._host = host
         self._port = port
         self._username = username
         self._password = password
         self._needs_imap_id = needs_imap_id
+        self._smtp_host = smtp_host
+        self._smtp_port = smtp_port
+        self._smtp_use_ssl = smtp_use_ssl
         self._conn: imaplib.IMAP4_SSL | None = None
-        self._drafts_folder: str | None = None
+        self._folder_cache: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Connection lifecycle
     # ------------------------------------------------------------------
     def _ensure_connected(self) -> imaplib.IMAP4_SSL:
+        """Return a live IMAP4_SSL connection, reconnecting if the prior one died.
+
+        163/QQ drop idle IMAP sockets after ~30-60s; without this check, any
+        operation that happens after the user pauses to read/edit a reply blows
+        up with BrokenPipeError. NOOP is cheap (~1 round-trip) and verifies the
+        socket is still healthy.
+        """
         if self._conn is not None:
-            return self._conn
+            try:
+                self._conn.noop()
+                return self._conn
+            except (imaplib.IMAP4.error, imaplib.IMAP4.abort, OSError):
+                # Dead connection — drop it silently and reconnect below.
+                with contextlib.suppress(Exception):
+                    self._conn.logout()
+                self._conn = None
+                self._folder_cache.clear()
 
         try:
             conn = imaplib.IMAP4_SSL(self._host, self._port, timeout=30)
@@ -83,7 +133,12 @@ class ImapProvider:
             raise ProviderError(f"Cannot reach {self._host}:{self._port}: {exc}") from exc
 
         if self._needs_imap_id:
-            self._send_imap_id(conn)
+            try:
+                self._send_imap_id(conn)
+            except (imaplib.IMAP4.error, KeyError, OSError) as exc:
+                raise ProviderError(
+                    f"IMAP ID handshake failed for {self._host} (needed for 163/QQ): {exc}"
+                ) from exc
 
         self._conn = conn
         return conn
@@ -185,37 +240,165 @@ class ImapProvider:
         self.mark_read(email_msg)
 
     # ------------------------------------------------------------------
+    # Folder browsing (used by the sidebar UI)
+    # ------------------------------------------------------------------
+    def list_folder(self, kind: FolderKind, limit: int = 50) -> list[EmailMsg]:
+        """List recent messages in a folder. Bodies left empty — use fetch_message."""
+        conn = self._ensure_connected()
+        folder = self._get_folder(kind, conn)
+        typ, _ = conn.select(folder, readonly=True)
+        if typ != "OK":
+            raise ProviderError(f"Could not select {folder}.")
+
+        typ, data = conn.search(None, "ALL")
+        if typ != "OK":
+            raise ProviderError(f"IMAP search in {folder} failed.")
+
+        ids = data[0].split()
+        ids = list(reversed(ids))[:limit]
+        if not ids:
+            return []
+
+        id_set = ",".join(i.decode("ascii") for i in ids)
+        # Envelope-only fetch keeps payloads small for list views.
+        typ, fetched = conn.fetch(
+            id_set, "(UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])"
+        )
+        if typ != "OK":
+            raise ProviderError(f"IMAP envelope fetch in {folder} failed.")
+
+        return _parse_envelope_list(fetched)
+
+    def fetch_message(self, kind: FolderKind, message_id: str) -> EmailMsg:
+        """Return one message with full body."""
+        conn = self._ensure_connected()
+        folder = self._get_folder(kind, conn)
+        typ, _ = conn.select(folder, readonly=True)
+        if typ != "OK":
+            raise ProviderError(f"Could not select {folder}.")
+
+        typ, fetched = conn.uid("FETCH", message_id, "(BODY.PEEK[])")
+        if typ != "OK" or not fetched:
+            raise ProviderError(f"Message {message_id} not found in {folder}.")
+
+        for chunk in fetched:
+            if isinstance(chunk, tuple) and len(chunk) >= 2 and isinstance(chunk[1], bytes):
+                return self._parse_message(message_id, chunk[1])
+
+        raise ProviderError(f"Could not parse message {message_id} in {folder}.")
+
+    def delete_message(self, kind: FolderKind, message_id: str) -> None:
+        """Mark a message deleted and expunge. Mainly used for drafts."""
+        conn = self._ensure_connected()
+        folder = self._get_folder(kind, conn)
+        typ, _ = conn.select(folder, readonly=False)
+        if typ != "OK":
+            raise ProviderError(f"Could not select {folder}.")
+        conn.uid("STORE", message_id, "+FLAGS", "(\\Deleted)")
+        conn.expunge()
+
+    def move_message(self, from_kind: FolderKind, to_kind: FolderKind, message_id: str) -> None:
+        """Move a message between folders: COPY + STORE \\Deleted + EXPUNGE.
+
+        Some servers support the IMAP MOVE extension (RFC 6851) which is atomic,
+        but COPY+DELETE is the universally supported fallback and works on 163.
+        """
+        conn = self._ensure_connected()
+        src = self._get_folder(from_kind, conn)
+        dst = self._get_folder(to_kind, conn)
+
+        typ, _ = conn.select(src, readonly=False)
+        if typ != "OK":
+            raise ProviderError(f"Could not select {src} for move.")
+
+        typ, _ = conn.uid("COPY", message_id, dst)
+        if typ != "OK":
+            raise ProviderError(f"COPY from {src} to {dst} failed.")
+
+        conn.uid("STORE", message_id, "+FLAGS", "(\\Deleted)")
+        conn.expunge()
+
+    def send(self, email_msg: EmailMsg, body: str) -> None:
+        """Send the reply via SMTP. Most providers auto-copy to Sent folder."""
+        if not self._smtp_host:
+            raise ProviderError(
+                "SMTP host is not configured for this account. "
+                "Pick a provider preset (Outlook/163/QQ/...) or re-add the account "
+                "with explicit SMTP settings."
+            )
+
+        reply = EmailMessage()
+        reply.set_content(body)
+        reply["From"] = self._username
+        reply["To"] = email_msg.sender
+        reply["Subject"] = self._reply_subject(email_msg.subject)
+        reply["In-Reply-To"] = email_msg.id
+        reply["References"] = email_msg.id
+
+        try:
+            if self._smtp_use_ssl:
+                smtp: smtplib.SMTP = smtplib.SMTP_SSL(self._smtp_host, self._smtp_port, timeout=30)
+            else:
+                smtp = smtplib.SMTP(self._smtp_host, self._smtp_port, timeout=30)
+                smtp.starttls()
+            try:
+                smtp.login(self._username, self._password)
+                smtp.send_message(reply)
+            finally:
+                with contextlib.suppress(smtplib.SMTPException, OSError):
+                    smtp.quit()
+        except smtplib.SMTPAuthenticationError as exc:
+            raise ProviderError(
+                f"SMTP auth failed for {self._username}@{self._smtp_host}: {exc}. "
+                "For 163/QQ, make sure the password is the 16-character 授权码, "
+                "not your normal login password."
+            ) from exc
+        except smtplib.SMTPException as exc:
+            raise ProviderError(f"SMTP send failed: {exc}") from exc
+        except OSError as exc:
+            raise ProviderError(
+                f"Cannot reach SMTP {self._smtp_host}:{self._smtp_port}: {exc}"
+            ) from exc
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-    def _get_drafts_folder(self, conn: imaplib.IMAP4_SSL) -> str:
-        if self._drafts_folder is not None:
-            return self._drafts_folder
+    def _get_folder(self, kind: str, conn: imaplib.IMAP4_SSL) -> str:
+        """Resolve a UI-level folder kind to the actual IMAP folder name."""
+        if kind in self._folder_cache:
+            return self._folder_cache[kind]
 
-        # 1) Try SPECIAL-USE: LIST returns "\Drafts" attribute for the drafts box.
+        special_use, fallbacks = FOLDER_HINTS[kind]
+
+        # 1) SPECIAL-USE via LIST.
         typ, listing = conn.list()
         if typ == "OK":
             for raw in listing or []:
                 if not isinstance(raw, bytes):
                     continue
                 line = raw.decode(errors="replace")
-                if "\\Drafts" in line:
+                if special_use in line:
                     folder = _parse_list_folder(line)
                     if folder:
-                        self._drafts_folder = folder
+                        self._folder_cache[kind] = folder
                         return folder
 
-        # 2) Fall back to common names.
-        for candidate in COMMON_DRAFT_FOLDERS:
+        # 2) Common-name fallback.
+        for candidate in fallbacks:
             typ, _ = conn.select(candidate, readonly=True)
             if typ == "OK":
                 conn.close()
-                self._drafts_folder = candidate
+                self._folder_cache[kind] = candidate
                 return candidate
 
         raise ProviderError(
-            "Could not locate a Drafts folder. "
-            "Please create one called 'Drafts' on the mail server."
+            f"Could not locate a {kind} folder. Tried SPECIAL-USE {special_use} and "
+            f"fallbacks {fallbacks}."
         )
+
+    def _get_drafts_folder(self, conn: imaplib.IMAP4_SSL) -> str:
+        """Back-compat shim used by create_draft."""
+        return self._get_folder("drafts", conn)
 
     def _parse_message(self, uid: str, raw: bytes) -> EmailMsg:
         msg: Message = email.message_from_bytes(raw, policy=email.policy.default)
@@ -261,6 +444,53 @@ def _extract_plain_body(msg: Message) -> str:
     if isinstance(payload, bytes):
         return payload.decode(msg.get_content_charset() or "utf-8", errors="replace")
     return str(payload or "")
+
+
+def _extract_flags(envelope_header: bytes) -> set[str]:
+    """imaplib responses include flags as '(FLAGS (\\Seen \\Recent) ...)'."""
+    text = envelope_header.decode(errors="replace")
+    idx = text.find("FLAGS (")
+    if idx == -1:
+        return set()
+    end = text.find(")", idx)
+    if end == -1:
+        return set()
+    return set(text[idx + len("FLAGS (") : end].split())
+
+
+def _parse_envelope_list(fetched: Sequence[object]) -> list[EmailMsg]:
+    """Turn imaplib's mixed-shape envelope FETCH response into EmailMsg list."""
+    messages: list[EmailMsg] = []
+    for chunk in fetched:
+        if not isinstance(chunk, tuple) or len(chunk) < 2:
+            continue
+        envelope_header = chunk[0]
+        header_bytes = chunk[1]
+        if not isinstance(envelope_header, bytes) or not isinstance(header_bytes, bytes):
+            continue
+        uid = _extract_uid(envelope_header)
+        if not uid:
+            continue
+        flags = _extract_flags(envelope_header)
+        unread = "\\Seen" not in flags
+
+        msg: Message = email.message_from_bytes(header_bytes, policy=email.policy.default)
+        subject = _decode_header_safe(msg.get("Subject", "(no subject)"))
+        sender = _decode_header_safe(msg.get("From", "(unknown)"))
+        date = msg.get("Date", "")
+        messages.append(
+            EmailMsg(
+                id=uid,
+                thread_id=uid,
+                sender=sender,
+                subject=subject,
+                snippet="",
+                body="",
+                date=date,
+                unread=unread,
+            )
+        )
+    return messages
 
 
 def _extract_uid(envelope_header: bytes) -> str | None:

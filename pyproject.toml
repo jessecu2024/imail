@@ -1,6 +1,6 @@
 [project]
 name = "imail"
-version = "0.3.0"
+version = "1.0.0"
 description = "Inbox triage as a local app: log in to Gmail / Outlook / 163 and clear emails with 3-version LLM-drafted replies (DeepSeek-powered)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -49,9 +49,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/imail"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/imail/static" = "imail/static"
+# `packages` already includes src/imail/static/ so static assets ship with the
+# wheel for a real install. For `uv sync` (editable), hatchling drops a .pth
+# file pointing at src/, so /static/* is served straight from the source tree.
 
 # ============================================================
 # Ruff — linter + formatter
