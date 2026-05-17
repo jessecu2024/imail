@@ -33,6 +33,7 @@ from imail.config import load_settings
 from imail.providers.base import EmailMsg, MailProvider, ProviderError
 from imail.providers.imap import PRESETS
 from imail.reply_generator import ReplyGenerator, ReplyTrio
+from imail.reply_store import ReplyStore
 
 logger = logging.getLogger("imail.server")
 
@@ -134,13 +135,28 @@ def use_provider(account_id: str) -> Iterator[MailProvider]:
 
 
 # ----------------------------------------------------------------------
-# Pre-generated reply cache for inbox messages.
-# Keyed by "{account_id}:{message_id}". Filled by a background task fired
-# every time the inbox is listed; checked by /api/triage/single before doing
-# a fresh DeepSeek call. Memory-only, cleared at process restart.
+# Pre-generated reply cache for inbox messages — disk-backed per account.
+# A ReplyStore tracks two states:
+#   pending: DeepSeek already drafted three replies (cached so a restart
+#            doesn't re-spend tokens regenerating).
+#   done:    the user picked one and we saved / sent it. The trio is dropped;
+#            only the chosen reply text is kept, and the inbox listing hides
+#            this message so the user never re-handles it.
+# Process-wide map of account_id → ReplyStore (lazy-constructed).
 # ----------------------------------------------------------------------
-_inbox_cache: dict[str, tuple[EmailMsg, ReplyTrio]] = {}
-_inbox_cache_lock = threading.Lock()
+_stores: dict[str, ReplyStore] = {}
+_stores_lock = threading.Lock()
+
+
+def _store_for(account_id: str) -> ReplyStore:
+    with _stores_lock:
+        store = _stores.get(account_id)
+        if store is None:
+            settings = load_settings(require_api_key=False)
+            store = ReplyStore.for_account(settings.config_dir, account_id)
+            _stores[account_id] = store
+        return store
+
 
 # A leaner cache for non-inbox folders (Sent / Drafts / Junk). We only need the
 # full message body, no LLM replies — the user is just reading. Keyed by
@@ -164,19 +180,9 @@ def _body_drop(account_id: str, kind: str, message_id: str) -> None:
         _body_cache.pop(f"{account_id}:{kind}:{message_id}", None)
 
 
-def _cache_get(account_id: str, message_id: str) -> tuple[EmailMsg, ReplyTrio] | None:
-    with _inbox_cache_lock:
-        return _inbox_cache.get(f"{account_id}:{message_id}")
-
-
-def _cache_put(account_id: str, message_id: str, email_msg: EmailMsg, trio: ReplyTrio) -> None:
-    with _inbox_cache_lock:
-        _inbox_cache[f"{account_id}:{message_id}"] = (email_msg, trio)
-
-
-def _cache_drop(account_id: str, message_id: str) -> None:
-    with _inbox_cache_lock:
-        _inbox_cache.pop(f"{account_id}:{message_id}", None)
+# Prefix on synthetic message ids representing locally-cached "I already
+# replied to this" entries surfaced inside the Sent folder listing.
+_LOCAL_SENT_PREFIX = "local:"
 
 
 def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
@@ -185,18 +191,26 @@ def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
     Runs in FastAPI's threadpool after the inbox listing has already been sent
     to the client, so the user sees the list immediately. Each iteration costs
     one DeepSeek call (~$0.0002), so 50 inbox messages cost about a cent.
+
+    Skips messages already in the on-disk store — either as pending (already
+    drafted in a prior run) or as done (already handled by the user).
     """
     try:
         settings = load_settings(require_api_key=True)
     except RuntimeError:
         return  # no API key — nothing to do
 
-    store = AccountStore.load()
-    account = store.get(account_id)
+    account_store = AccountStore.load()
+    account = account_store.get(account_id)
     if account is None:
         return
 
-    missing = [mid for mid in message_ids if _cache_get(account_id, mid) is None]
+    reply_store = _store_for(account_id)
+    missing = [
+        mid
+        for mid in message_ids
+        if reply_store.get_pending(mid) is None and not reply_store.is_done(mid)
+    ]
     if not missing:
         return
 
@@ -215,14 +229,14 @@ def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
 
     try:
         for mid in missing:
-            if _cache_get(account_id, mid) is not None:
+            if reply_store.get_pending(mid) is not None or reply_store.is_done(mid):
                 continue
             try:
                 email_msg = provider.fetch_message("inbox", mid)
                 trio = generator.generate(email_msg)
                 if trio.is_spam:
                     # The model called this spam — move it out of inbox so it
-                    # stops cluttering the UI. Don't bother caching (the user
+                    # stops cluttering the UI. Don't store the trio (the user
                     # will only see it in the Junk folder).
                     try:
                         provider.move_message("inbox", "junk", mid)
@@ -234,9 +248,9 @@ def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
                         )
                     except ProviderError as exc:
                         logger.warning("Spam detected but move-to-junk failed for %s: %s", mid, exc)
-                        _cache_put(account_id, mid, email_msg, trio)
+                        reply_store.put_pending(mid, email_msg, trio)
                 else:
-                    _cache_put(account_id, mid, email_msg, trio)
+                    reply_store.put_pending(mid, email_msg, trio)
                     logger.info("Prefetched replies for %s/%s", account_id, mid)
             except Exception as exc:
                 logger.warning("Prefetch failed for %s/%s: %s", account_id, mid, exc)
@@ -435,6 +449,13 @@ def delete_account(account_id: str) -> dict[str, bool]:
         raise HTTPException(404, "Account not found.")
     store.remove(account_id)
     _pool_evict(account_id)
+    # Also forget the on-disk reply cache for this account — keeping it would
+    # leave a dangling file the user can't reach through the UI.
+    with _stores_lock:
+        rs = _stores.pop(account_id, None)
+    if rs is not None:
+        with contextlib.suppress(OSError):
+            rs.path.unlink()
     return {"ok": True}
 
 
@@ -453,6 +474,13 @@ def list_folder(
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
 
+    # Inbox: hide anything already handled (recorded in the local "done" set)
+    # so the user never sees their own already-replied emails again.
+    if kind == "inbox":
+        handled = _store_for(account_id).done_ids()
+        if handled:
+            msgs = [m for m in msgs if m.id not in handled]
+
     # Fire-and-forget warm-up:
     #   - Inbox: full triage prefetch (body + 3 DeepSeek replies + spam-move)
     #   - Sent / Drafts / Junk: just cache bodies for the top N so the first
@@ -464,7 +492,7 @@ def list_folder(
         else:
             background_tasks.add_task(_warm_folder_bodies, account_id, kind, ids)
 
-    return [
+    summaries = [
         MessageSummary(
             id=m.id,
             sender=m.sender,
@@ -475,6 +503,25 @@ def list_folder(
         for m in msgs
     ]
 
+    # Sent: prepend every locally-recorded reply as a synthetic row. These
+    # render instantly (no IMAP round-trip) and let the user re-read past
+    # replies even when offline. Ids are prefixed `local:` so get_message
+    # knows to serve the chosen reply from the store rather than from IMAP.
+    if kind == "sent":
+        local_rows = [
+            MessageSummary(
+                id=f"{_LOCAL_SENT_PREFIX}{e.message_id}",
+                sender=e.sender or "(unknown)",
+                subject=_reply_subject(e.subject),
+                date=e.replied_at,
+                unread=False,
+            )
+            for e in _store_for(account_id).done_entries()
+        ]
+        summaries = local_rows + summaries
+
+    return summaries
+
 
 @app.get("/api/messages/{account_id}/{kind}/{message_id}", response_model=MessageDetail)
 def get_message(
@@ -482,6 +529,21 @@ def get_message(
     kind: Literal["inbox", "drafts", "sent", "junk"],
     message_id: str,
 ) -> MessageDetail:
+    # Synthetic "Sent" row backed by the local reply store. The IMAP server
+    # doesn't know this id; we serve the chosen reply text directly.
+    if kind == "sent" and message_id.startswith(_LOCAL_SENT_PREFIX):
+        original_id = message_id[len(_LOCAL_SENT_PREFIX) :]
+        entry = _store_for(account_id).get_done(original_id)
+        if entry is None:
+            raise HTTPException(404, "Local sent entry not found.")
+        return MessageDetail(
+            id=message_id,
+            sender=entry.sender,
+            subject=_reply_subject(entry.subject),
+            body=entry.chosen_reply,
+            date=entry.replied_at,
+        )
+
     # Cache check first — the background warmup on list_folder usually has
     # already pulled the body for the top messages.
     cached = _body_get(account_id, kind, message_id)
@@ -659,7 +721,7 @@ def triage_draft(req: DraftRequest) -> dict[str, str]:
         _session.provider.mark_read(_session.current)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
-    _cache_drop(_session.account.id, _session.current.id)
+    _store_for(_session.account.id).mark_done(_session.current.id, req.body)
     return {"draft_id": draft_id}
 
 
@@ -683,7 +745,7 @@ def triage_send(req: SendRequest) -> dict[str, str]:
         _session.provider.mark_read(_session.current)
     except Exception as exc:
         logger.warning("mark_read after send failed (non-fatal): %s", exc)
-    _cache_drop(_session.account.id, _session.current.id)
+    _store_for(_session.account.id).mark_done(_session.current.id, req.body)
     return {"status": "sent"}
 
 
@@ -706,8 +768,10 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
         raise HTTPException(404, "Account not found.")
 
     # Cache hit? Skip both the IMAP fetch_message AND the DeepSeek call —
-    # we already have everything from the prefetch background task.
-    cached = _cache_get(req.account_id, req.message_id) if req.kind == "inbox" else None
+    # we already have everything from the prefetch background task (or a
+    # prior session, since the store is on disk).
+    reply_store = _store_for(req.account_id) if req.kind == "inbox" else None
+    cached = reply_store.get_pending(req.message_id) if reply_store is not None else None
 
     try:
         provider = open_provider(account)
@@ -722,9 +786,9 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
     )
 
     if cached is not None:
-        email_msg, replies = cached
+        email_msg, replies = cached.email, cached.trio
         logger.info(
-            "Cache HIT for %s/%s — replies served instantly", req.account_id, req.message_id
+            "Cache HIT for %s/%s — replies served from disk", req.account_id, req.message_id
         )
     else:
         try:
@@ -743,8 +807,8 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
             with contextlib.suppress(ProviderError):
                 provider.move_message("inbox", "junk", req.message_id)
                 logger.info("Spam-moved on click: %s/%s", req.account_id, req.message_id)
-        elif req.kind == "inbox":
-            _cache_put(req.account_id, req.message_id, email_msg, replies)
+        elif req.kind == "inbox" and reply_store is not None:
+            reply_store.put_pending(req.message_id, email_msg, replies)
 
     _session = _Session(account=account, provider=provider, generator=generator)
     _session.queue = []  # empty — no auto-advance after the user picks
@@ -793,6 +857,19 @@ def _account_view(account: Account) -> AccountResponse:
         imap_host=account.imap_host,
         imap_preset=account.imap_preset,
     )
+
+
+def _reply_subject(original: str) -> str:
+    """`Coffee?` → `Re: Coffee?`; idempotent on subjects that already
+    start with the reply marker (case-insensitive, allowing `RE:` and
+    common locale-prefixed forms like `回复:`)."""
+    if not original:
+        return "Re:"
+    stripped = original.strip()
+    head = stripped[:3].lower()
+    if head == "re:" or stripped.startswith(("回复:", "回复：", "回复 ")):  # noqa: RUF001
+        return stripped
+    return f"Re: {stripped}"
 
 
 def _account_provider(account_id: str) -> tuple[Account, MailProvider]:
