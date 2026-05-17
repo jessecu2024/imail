@@ -52,3 +52,6 @@ htmlcov/
 # --- OS noise ---
 .DS_Store
 Thumbs.db
+
+# --- Local session / transcript logs (not source) ---
+*.log
