@@ -306,19 +306,33 @@ class ImapProvider:
         if msg:
             return self._parse_message(message_id, msg)
 
-        # --- attempt 2: SEARCH UID → sequence-number FETCH BODY.PEEK[] ---
-        # Some servers reply oddly to UID FETCH for non-INBOX folders.
-        # Resolving the sequence number ourselves sidesteps that path.
+        # --- existence check via SEARCH UID ---
+        # 163 returns an OK-shaped FETCH response for messages it has never
+        # heard of (or has just expunged), which used to fool the parser into
+        # reporting "empty body". Use UID SEARCH to disambiguate: if there's
+        # no match, the message simply isn't in this folder anymore —
+        # almost always because another client deleted/moved it. Surface a
+        # dedicated error so the UI can refresh the stale listing.
         typ, search_data = conn.uid("SEARCH", "UID", message_id)
+        uid_match: list[bytes] = []
         if typ == "OK" and search_data and search_data[0]:
             uid_match = search_data[0].split()
-            if uid_match:
-                typ, fetched = conn.fetch(uid_match[0], "(BODY.PEEK[])")
-                last_fetched = fetched
-                if typ == "OK":
-                    body = _first_body(fetched)
-                    if body:
-                        return self._parse_message(message_id, body)
+        if not uid_match:
+            raise ProviderError(
+                f"Message {message_id} no longer exists in {folder}. "
+                "It was probably deleted from another client (163 webmail, "
+                "phone). Refresh the folder."
+            )
+
+        # --- attempt 2: sequence-number FETCH BODY.PEEK[] ---
+        # Some servers reply oddly to UID FETCH for non-INBOX folders.
+        # Resolving the sequence number ourselves sidesteps that path.
+        typ, fetched = conn.fetch(uid_match[0].decode("ascii"), "(BODY.PEEK[])")
+        last_fetched = fetched
+        if typ == "OK":
+            body = _first_body(fetched)
+            if body:
+                return self._parse_message(message_id, body)
 
         # --- attempt 3: UID FETCH RFC822 ---
         # The legacy RFC822 fetch attribute returns the full message text the

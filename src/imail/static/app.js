@@ -374,8 +374,20 @@ function app() {
       } catch (e) {
         this.message = "Error: " + e.message;
         this.view = "folder";
+        this._handleStaleListingError(m.id, e.message);
       } finally {
         this.busy = false;
+      }
+    },
+
+    _handleStaleListingError(messageId, errMsg) {
+      // When fetch reports "no longer exists", the listing in localStorage
+      // is stale — another client deleted/moved that message. Drop the
+      // row from the cached list and refresh from the server so the user
+      // doesn't keep clicking a ghost.
+      if (typeof errMsg === "string" && /no longer exists/i.test(errMsg)) {
+        this._dropFromList(messageId);
+        this.refreshFolder();
       }
     },
 
@@ -785,6 +797,7 @@ function app() {
       } catch (e) {
         this.message = "Error: " + e.message;
         this.view = "folder";
+        this._handleStaleListingError(messageId, e.message);
       }
     },
 
