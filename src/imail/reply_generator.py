@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import email.utils
 import json
+import re
 from dataclasses import dataclass
 
 from openai import OpenAI
@@ -54,9 +55,10 @@ Rules for every reply (this format is REQUIRED, no variants):
   the recipient name on the next line.
 - 2-5 sentences in the body. No "Subject:" line, no quoted history,
   no markdown.
-- Match the language of the incoming email body for the middle content,
-  but keep the `Dear ... ,` salutation and `Best regards,` sign-off in
-  English as shown — even if the email is in Chinese.
+- Write the ENTIRE reply in English, regardless of what language the
+  incoming email is in. Even if the original email is in Chinese,
+  Japanese, German, French, etc., the reply you draft is always in
+  natural, professional English. Do not mix languages.
 - Do not invent facts. If a fact is needed, hedge ("I'll check and confirm...").
 
 If is_spam is true, set all three reply fields to the empty string "" —
@@ -138,29 +140,53 @@ class ReplyGenerator:
 def extract_first_name(sender_header: str) -> str:
     """Best-effort parse of the sender's first name from a From header.
 
-    Used to feed the LLM a clean `Dear <FirstName>,` opener. Handles
-    `Display Name <addr>`, `"Last, First" <addr>` (comma-reversed
-    surname-first form common in directory listings), and bare addresses
-    by capitalising the local-part. Returns "" when nothing usable is
-    parseable so the caller can pick its own fallback.
+    Used to feed the LLM a clean `Dear <FirstName>,` opener for replies
+    drafted in English. Handles `Display Name <addr>`, `"Last, First"
+    <addr>` (comma-reversed surname-first form common in directory
+    listings), and bare addresses by capitalising the local-part.
+
+    Display names with no Latin letters (e.g. `张老师 <zhang@…>`) fall
+    through to the local-part so the salutation reads cleanly in an
+    English reply (`Dear Zhang,` rather than `Dear 张老师,`).
+
+    Returns "" when nothing usable is parseable so the caller can pick
+    its own fallback (e.g. "there").
     """
     if not sender_header or not sender_header.strip():
         return ""
     name, addr = email.utils.parseaddr(sender_header)
     name = name.strip().strip('"').strip()
     if name:
-        if "," in name:
-            last, _, first = name.partition(",")
-            first = first.strip()
-            if first:
-                return first.split()[0]
-            # Fall through to using the part before the comma if the
-            # right side was empty for some reason.
-            return last.strip().split()[0] if last.strip() else ""
-        return name.split()[0]
+        tokens = _name_tokens(name)
+        for tok in tokens:
+            if _has_latin(tok):
+                return tok
+        # Display name had no Latin tokens — fall through to local-part.
     local = addr.split("@", 1)[0] if addr else ""
     tokens = local.replace(".", " ").replace("_", " ").replace("-", " ").split()
-    return tokens[0].capitalize() if tokens else ""
+    for tok in tokens:
+        if _has_latin(tok):
+            return tok.capitalize()
+    return ""
+
+
+def _name_tokens(name: str) -> list[str]:
+    """Split a display name into ordered candidate tokens.
+
+    `"Wang, Alex"` returns `["Alex", "Wang"]` (first-name first), while
+    `"Alex Wang"` returns `["Alex", "Wang"]`. The caller picks the first
+    token that looks like a Latin-script first name.
+    """
+    if "," in name:
+        last, _, first = name.partition(",")
+        ordered = first.strip().split() + last.strip().split()
+    else:
+        ordered = name.split()
+    return ordered
+
+
+def _has_latin(token: str) -> bool:
+    return bool(re.search(r"[A-Za-z]", token))
 
 
 def parse_reply_json(raw: str) -> ReplyTrio:
