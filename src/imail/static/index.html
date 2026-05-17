@@ -130,7 +130,7 @@
         </section>
 
         <!-- IMAP forms (presets + custom) -->
-        <section class="card" x-show="['outlook','163','126','qq','yahoo','icloud','custom'].includes(chosen)">
+        <section class="card" x-show="['outlook','office365','163','126','qq','yahoo','icloud','custom'].includes(chosen)">
           <h2 x-text="`Add ${chosen === 'custom' ? 'custom IMAP' : chosen.toUpperCase()} account`"></h2>
           <p class="muted" x-show="chosen !== 'custom'">
             For <span x-text="chosen.toUpperCase()"></span>, sign in with your email

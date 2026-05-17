@@ -56,9 +56,19 @@ class ImapPreset:
 
 # Hard-coded presets keep the UI buttons "just work" for the common cases.
 PRESETS: dict[str, ImapPreset] = {
+    # Personal outlook.com / hotmail.com — uses consumer SMTP host.
     "outlook": ImapPreset(
         host="outlook.office365.com",
         smtp_host="smtp-mail.outlook.com",
+        smtp_port=587,
+        smtp_use_ssl=False,
+    ),
+    # Microsoft 365 / Office 365 — work/school accounts (CityU, etc.). Same IMAP
+    # host as personal Outlook, but a different SMTP server. Requires IMAP+SMTP
+    # to be enabled by the tenant AND (when MFA is on) an app password.
+    "office365": ImapPreset(
+        host="outlook.office365.com",
+        smtp_host="smtp.office365.com",
         smtp_port=587,
         smtp_use_ssl=False,
     ),

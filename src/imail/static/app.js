@@ -14,14 +14,15 @@ function app() {
     /* Add-account form state */
     chosen: "",
     providers: [
-      { id: "gmail",   name: "Gmail",   icon: "✦", tag: "OAuth" },
-      { id: "outlook", name: "Outlook", icon: "▣", tag: "IMAP · App pwd" },
-      { id: "163",     name: "163",     icon: "✱", tag: "IMAP · 授权码" },
-      { id: "126",     name: "126",     icon: "✱", tag: "IMAP · 授权码" },
-      { id: "qq",      name: "QQ Mail", icon: "★", tag: "IMAP · 授权码" },
-      { id: "yahoo",   name: "Yahoo",   icon: "✿", tag: "IMAP · App pwd" },
-      { id: "icloud",  name: "iCloud",  icon: "◐", tag: "IMAP · App-spec" },
-      { id: "custom",  name: "Custom",  icon: "⚙", tag: "Any IMAP" },
+      { id: "gmail",     name: "Gmail",         icon: "✦", tag: "OAuth" },
+      { id: "office365", name: "Microsoft 365", icon: "▦", tag: "Work / school · IMAP" },
+      { id: "outlook",   name: "Outlook.com",   icon: "▣", tag: "Personal · IMAP" },
+      { id: "163",       name: "163",           icon: "✱", tag: "IMAP · 授权码" },
+      { id: "126",       name: "126",           icon: "✱", tag: "IMAP · 授权码" },
+      { id: "qq",        name: "QQ Mail",       icon: "★", tag: "IMAP · 授权码" },
+      { id: "yahoo",     name: "Yahoo",         icon: "✿", tag: "IMAP · App pwd" },
+      { id: "icloud",    name: "iCloud",        icon: "◐", tag: "IMAP · App-spec" },
+      { id: "custom",    name: "Custom",        icon: "⚙", tag: "Any IMAP" },
     ],
     form: {
       gmail: { label: "", credentials_path: "" },
@@ -508,12 +509,13 @@ function app() {
 
     appPasswordLink(provider) {
       return {
-        outlook: "https://support.microsoft.com/en-us/account-billing/manage-app-passwords-for-two-step-verification-d6dc8c6d-4bf7-4851-ad95-6d07799387e9",
-        "163":   "https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4287f3b3a5b8aa61b9d6f49d8e6c8e",
-        "126":   "https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4287f3b3a5b8aa61b9d6f49d8e6c8e",
-        qq:      "https://service.mail.qq.com/detail/0/75",
-        yahoo:   "https://help.yahoo.com/kb/SLN15241.html",
-        icloud:  "https://support.apple.com/en-us/HT204397",
+        outlook:   "https://support.microsoft.com/en-us/account-billing/manage-app-passwords-for-two-step-verification-d6dc8c6d-4bf7-4851-ad95-6d07799387e9",
+        office365: "https://account.activedirectory.windowsazure.com/AppPasswords.aspx",
+        "163":     "https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4287f3b3a5b8aa61b9d6f49d8e6c8e",
+        "126":     "https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4287f3b3a5b8aa61b9d6f49d8e6c8e",
+        qq:        "https://service.mail.qq.com/detail/0/75",
+        yahoo:     "https://help.yahoo.com/kb/SLN15241.html",
+        icloud:    "https://support.apple.com/en-us/HT204397",
       }[provider] || "";
     },
 

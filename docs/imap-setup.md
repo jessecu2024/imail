@@ -18,6 +18,48 @@ Host: `outlook.office365.com:993`
 
 ---
 
+## Microsoft 365 / Office 365 (work or school — incl. CityU, ETH, etc.)
+
+University and corporate accounts hosted on Microsoft 365 use the **same**
+IMAP host as personal Outlook but a **different SMTP host**, and most tenants
+require an **app password** because MFA is forced.
+
+### Step 1 — Check that IMAP is allowed at all
+
+Some tenants disable basic IMAP/SMTP entirely (in favour of OAuth2). To find out:
+
+1. Sign in to <https://outlook.office.com/mail/options/mail/accounts>
+2. Look for **POP and IMAP** → confirm IMAP shows the server name `outlook.office365.com`
+3. If you don't see this section at all, your IT has disabled it — imail can't
+   reach this mailbox via IMAP. Tell me and we'll wire up Microsoft Graph
+   (OAuth2) instead, which is what Outlook desktop / Mac Mail use.
+
+### Step 2 — Generate an app password
+
+Only needed if MFA is on (it almost always is on a university account).
+
+1. Open <https://account.activedirectory.windowsazure.com/AppPasswords.aspx>
+   (or: <https://mysignins.microsoft.com/security-info> → **Add sign-in method**
+   → **App password**)
+2. Click **Create**, name it `imail`
+3. Copy the long random password — it's shown **once**
+
+> ⚠ If "App passwords" is missing from your security options, the tenant has
+> turned them off too. That also means you need OAuth2 (Microsoft Graph).
+
+### Step 3 — Add the account in imail
+
+1. Sidebar → **+ Add account** → **Microsoft 365**
+2. Email: your work/school address (e.g. `you@cityu.edu.hk`)
+3. App password: the value from Step 2
+4. **Add**
+
+Hosts (already filled in by the preset):
+- IMAP: `outlook.office365.com:993` (TLS)
+- SMTP: `smtp.office365.com:587` (STARTTLS)
+
+---
+
 ## 163 / 126 / Yeah
 
 1. Sign in to <https://mail.163.com>.
