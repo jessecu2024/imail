@@ -5,6 +5,7 @@ from __future__ import annotations
 from imail.providers.imap import (
     _decode_header_safe,
     _extract_uid,
+    _first_body,
     _parse_list_folder,
     _parse_status_uidnext,
 )
@@ -44,3 +45,47 @@ def test_parse_status_uidnext_finds_number() -> None:
 
 def test_parse_status_uidnext_returns_none_when_missing() -> None:
     assert _parse_status_uidnext(b'"Drafts" (MESSAGES 5)') is None
+
+
+# ----- _first_body: tolerant parser for imaplib FETCH responses ---------- #
+
+
+def test_first_body_standard_envelope_body_tuple() -> None:
+    fetched = [(b"1 (UID 42 BODY[] {25}", b"From: a@x\r\n\r\nhi"), b")"]
+    assert _first_body(fetched) == b"From: a@x\r\n\r\nhi"
+
+
+def test_first_body_skips_empty_payload_in_tuple() -> None:
+    """163 sometimes returns the envelope with an empty body — keep looking."""
+    fetched = [
+        (b"1 (UID 42 BODY[] {0}", b""),
+        b"From: a@x\r\n\r\nbody-as-bare-bytes",
+        b")",
+    ]
+    assert _first_body(fetched) == b"From: a@x\r\n\r\nbody-as-bare-bytes"
+
+
+def test_first_body_accepts_bare_rfc822_chunk_with_header() -> None:
+    """163's 已发送 sometimes inlines the body as a top-level bytes chunk
+    instead of pairing it with an envelope tuple."""
+    fetched = [
+        None,
+        b"Date: Mon, 01 Jan 2026 10:00:00 +0800\r\nSubject: hi\r\n\r\nbody",
+        b")",
+    ]
+    body = _first_body(fetched)
+    assert body is not None
+    assert b"Subject: hi" in body
+
+
+def test_first_body_returns_none_for_empty_response() -> None:
+    assert _first_body([None, b")"]) is None
+    assert _first_body([]) is None
+    assert _first_body(None) is None
+
+
+def test_first_body_returns_none_when_no_rfc822_marker() -> None:
+    """A bare bytes chunk that doesn't look like email shouldn't be returned —
+    we'd just pass garbage into the parser."""
+    fetched = [b"OK", b"NIL", b")"]
+    assert _first_body(fetched) is None

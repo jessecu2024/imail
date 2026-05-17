@@ -236,6 +236,70 @@ body {
 }
 .message-row.unread .row-subject { font-weight: 600; }
 
+/* Already-handled inbox row: green left-stripe, dimmed look, "已回复" badge. */
+.message-row.replied {
+  background: var(--pos-bg);
+  border-left-color: var(--pos);
+  opacity: 0.78;
+}
+.message-row.replied:hover { opacity: 1; }
+.message-row.replied .row-subject { color: var(--text-dim, var(--text-soft)); font-weight: 500; }
+.replied-badge {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  margin-right: 0.5rem;
+  border-radius: 4px;
+  background: var(--pos);
+  color: #0a1a0e;
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* Replied banner + saved-reply card in the triage view. */
+.replied-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+  margin-top: 1rem;
+  background: var(--pos-bg);
+  border: 1px solid var(--pos);
+  border-radius: 8px;
+}
+.replied-banner .replied-icon {
+  font-size: 1.4rem;
+  color: var(--pos);
+  font-weight: 700;
+}
+.replied-banner strong { font-size: 1rem; }
+.replied-banner .small { font-size: 0.82rem; margin: 0.2rem 0 0; }
+.replied-banner .link { margin-left: auto; }
+
+.saved-reply-card {
+  margin-top: 1rem;
+  border: 1px solid var(--pos);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.saved-reply-header {
+  padding: 0.5rem 1rem;
+  background: var(--pos-bg);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--pos);
+}
+.saved-reply-body {
+  margin: 0;
+  padding: 1rem;
+  background: var(--bg-2);
+  font-family: inherit;
+  font-size: 0.95rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ===================== MESSAGE DETAIL ===================== */
 .email-body.full { max-height: none; }
 

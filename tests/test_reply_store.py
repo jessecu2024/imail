@@ -65,6 +65,16 @@ def test_mark_done_drops_pending_and_keeps_chosen_reply(store: ReplyStore) -> No
     assert done.chosen_reply.startswith("Dear Alex,")
     assert done.sender == "Alex <a@x>"
     assert done.subject == "Coffee?"
+    assert done.body == "Hi Jie, coffee?"  # original incoming body preserved
+
+
+def test_mark_done_email_kwarg_overrides_pending(store: ReplyStore) -> None:
+    """The server has _session.current — pass it explicitly so body/sender/date
+    come from the live message even if pending is absent or stale."""
+    fresh = _email(sender="Bob <b@x>")
+    done = store.mark_done("m2", "thanks", email=fresh)
+    assert done.sender == "Bob <b@x>"
+    assert done.body == fresh.body
 
 
 def test_mark_done_without_prior_pending_still_works(store: ReplyStore) -> None:

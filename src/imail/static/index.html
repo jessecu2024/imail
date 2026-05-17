@@ -211,12 +211,15 @@
         <ul class="message-list">
           <template x-for="m in messageList" :key="m.id">
             <li>
-              <button class="message-row" :class="{ unread: m.unread }" @click="openMessage(m)">
+              <button class="message-row" :class="{ unread: m.unread, replied: m.replied }" @click="openMessage(m)">
                 <div class="row-top">
                   <span class="from" x-text="m.sender"></span>
                   <span class="date" x-text="shortDate(m.date)"></span>
                 </div>
-                <div class="row-subject" x-text="m.subject"></div>
+                <div class="row-subject">
+                  <span x-show="m.replied" class="replied-badge">✓ 已回复</span>
+                  <span x-text="m.subject"></span>
+                </div>
               </button>
             </li>
           </template>
@@ -314,7 +317,39 @@
           </div>
         </template>
 
-        <template x-if="!triage.done && triage.current">
+        <!-- ALREADY-REPLIED branch: replies trio is null; show the saved one. -->
+        <template x-if="!triage.done && triage.current && triage.current.alreadyReplied">
+          <div>
+            <article class="email-card">
+              <div class="email-header">
+                <div class="email-from">
+                  <span class="muted">From</span>
+                  <strong x-text="triage.current.email.sender"></strong>
+                  <span class="email-date" x-text="longDate(triage.current.email.date)"></span>
+                </div>
+                <div class="email-subject" x-text="triage.current.email.subject"></div>
+              </div>
+              <pre class="email-body" x-text="triage.current.email.body"></pre>
+            </article>
+
+            <div class="replied-banner">
+              <span class="replied-icon">✓</span>
+              <div>
+                <strong>已回复</strong>
+                <span class="muted">at <span x-text="longDate(triage.current.repliedAt)"></span></span>
+                <p class="muted small">No new draft generated — tokens saved.</p>
+              </div>
+              <button class="link" @click="backToFolder()">← back</button>
+            </div>
+
+            <article class="saved-reply-card">
+              <header class="saved-reply-header">YOUR SAVED REPLY</header>
+              <pre class="saved-reply-body" x-text="triage.current.chosenReply"></pre>
+            </article>
+          </div>
+        </template>
+
+        <template x-if="!triage.done && triage.current && !triage.current.alreadyReplied">
           <div>
             <article class="email-card">
               <div class="email-header">

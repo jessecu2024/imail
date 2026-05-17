@@ -337,9 +337,14 @@ function app() {
       }
     },
 
-    _dropFromCachedInbox(messageId) {
+    _markRepliedInCachedInbox(messageId) {
+      // Flip `replied: true` on the matching cached row so the inbox shows
+      // the green "已回复" badge the moment we navigate back, without
+      // waiting for the next /api/folders round-trip.
       if (!this.selectedAccount) return;
-      this.messageList = this.messageList.filter((m) => m.id !== messageId);
+      this.messageList = this.messageList.map((m) =>
+        m.id === messageId ? { ...m, replied: true, unread: false } : m,
+      );
       this._saveCachedList(this.selectedAccount, "inbox", this.messageList);
     },
 
@@ -637,7 +642,13 @@ function app() {
         });
         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
         const data = await res.json();
-        this.triage.current = { email: data.email, replies: data.replies };
+        this.triage.current = {
+          email: data.email,
+          replies: data.replies,
+          alreadyReplied: !!data.already_replied,
+          chosenReply: data.chosen_reply || "",
+          repliedAt: data.replied_at || "",
+        };
         this.triage.remaining = 0;
       } catch (e) {
         this.message = "Error: " + e.message;
@@ -692,9 +703,10 @@ function app() {
         this.message = `✓ ${successWord}.`;
         this.triage.processed += 1;
 
-        // Processed — drop the email from the cached inbox list so the user's
-        // view stays clean and we don't carry stale entries between sessions.
-        this._dropFromCachedInbox(processedId);
+        // Processed — flip this row to "replied" in the cached inbox so the
+        // green badge appears immediately when we navigate back, rather than
+        // waiting for the next folder refresh from the server.
+        this._markRepliedInCachedInbox(processedId);
 
         if (this.triage.mode === "batch") {
           await this.loadNext();

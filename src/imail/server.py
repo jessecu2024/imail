@@ -140,8 +140,10 @@ def use_provider(account_id: str) -> Iterator[MailProvider]:
 #   pending: DeepSeek already drafted three replies (cached so a restart
 #            doesn't re-spend tokens regenerating).
 #   done:    the user picked one and we saved / sent it. The trio is dropped;
-#            only the chosen reply text is kept, and the inbox listing hides
-#            this message so the user never re-handles it.
+#            only the chosen reply text + original body is kept. The inbox
+#            listing tags these rows `replied=True` so the UI can colour
+#            them differently; clicking one re-shows the saved reply instead
+#            of redrafting fresh ones.
 # Process-wide map of account_id → ReplyStore (lazy-constructed).
 # ----------------------------------------------------------------------
 _stores: dict[str, ReplyStore] = {}
@@ -358,6 +360,7 @@ class MessageSummary(BaseModel):
     subject: str
     date: str
     unread: bool
+    replied: bool = False  # inbox-only: true when this message is in the local "done" set
 
 
 class MessageDetail(BaseModel):
@@ -373,6 +376,11 @@ class TriageNextResponse(BaseModel):
     remaining: int
     email: dict[str, str | int] | None = None
     replies: ReplyTrio | None = None
+    # When the user reopens an already-handled inbox message we don't draft
+    # three new replies — we surface the one they chose last time instead.
+    already_replied: bool = False
+    chosen_reply: str | None = None
+    replied_at: str | None = None
 
 
 # ----------------------------------------------------------------------
@@ -474,22 +482,25 @@ def list_folder(
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
 
-    # Inbox: hide anything already handled (recorded in the local "done" set)
-    # so the user never sees their own already-replied emails again.
+    # Inbox: tag every message we've already handled so the UI can colour
+    # those rows differently. The prefetch skips done rows on its own — we
+    # don't pay tokens to redraft replies the user has already chosen.
+    handled: set[str] = set()
     if kind == "inbox":
         handled = _store_for(account_id).done_ids()
-        if handled:
-            msgs = [m for m in msgs if m.id not in handled]
 
     # Fire-and-forget warm-up:
-    #   - Inbox: full triage prefetch (body + 3 DeepSeek replies + spam-move)
+    #   - Inbox: full triage prefetch (body + 3 DeepSeek replies + spam-move),
+    #     scoped to messages that aren't already handled.
     #   - Sent / Drafts / Junk: just cache bodies for the top N so the first
     #     click is instant.
     if msgs:
-        ids = [m.id for m in msgs]
         if kind == "inbox":
-            background_tasks.add_task(_warm_inbox_cache, account_id, ids)
+            unhandled_ids = [m.id for m in msgs if m.id not in handled]
+            if unhandled_ids:
+                background_tasks.add_task(_warm_inbox_cache, account_id, unhandled_ids)
         else:
+            ids = [m.id for m in msgs]
             background_tasks.add_task(_warm_folder_bodies, account_id, kind, ids)
 
     summaries = [
@@ -499,6 +510,7 @@ def list_folder(
             subject=m.subject,
             date=m.date,
             unread=m.unread,
+            replied=(m.id in handled),
         )
         for m in msgs
     ]
@@ -721,7 +733,7 @@ def triage_draft(req: DraftRequest) -> dict[str, str]:
         _session.provider.mark_read(_session.current)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
-    _store_for(_session.account.id).mark_done(_session.current.id, req.body)
+    _store_for(_session.account.id).mark_done(_session.current.id, req.body, email=_session.current)
     return {"draft_id": draft_id}
 
 
@@ -745,7 +757,7 @@ def triage_send(req: SendRequest) -> dict[str, str]:
         _session.provider.mark_read(_session.current)
     except Exception as exc:
         logger.warning("mark_read after send failed (non-fatal): %s", exc)
-    _store_for(_session.account.id).mark_done(_session.current.id, req.body)
+    _store_for(_session.account.id).mark_done(_session.current.id, req.body, email=_session.current)
     return {"status": "sent"}
 
 
@@ -771,6 +783,55 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
     # we already have everything from the prefetch background task (or a
     # prior session, since the store is on disk).
     reply_store = _store_for(req.account_id) if req.kind == "inbox" else None
+
+    # If the user is reopening an already-handled inbox message, return the
+    # original body + their saved reply with no DeepSeek call at all. We
+    # still open a session so the existing /draft and /send endpoints work
+    # if the user wants to re-send.
+    if reply_store is not None and reply_store.is_done(req.message_id):
+        done_entry = reply_store.get_done(req.message_id)
+        if done_entry is not None:
+            try:
+                provider = open_provider(account)
+            except ProviderError as exc:
+                raise HTTPException(502, str(exc)) from exc
+            replayed = EmailMsg(
+                id=req.message_id,
+                thread_id=req.message_id,
+                sender=done_entry.sender,
+                subject=done_entry.subject,
+                snippet=done_entry.body[:200] if done_entry.body else "",
+                body=done_entry.body,
+                date=done_entry.date,
+            )
+            _session = _Session(
+                account=account,
+                provider=provider,
+                generator=ReplyGenerator(
+                    api_key=settings.api_key,
+                    model=settings.model,
+                    user_signoff=settings.user_signoff,
+                    base_url=settings.base_url,
+                ),
+            )
+            _session.queue = []
+            _session.current = replayed
+            return TriageNextResponse(
+                done=False,
+                remaining=0,
+                email={
+                    "id": replayed.id,
+                    "sender": replayed.sender,
+                    "subject": replayed.subject,
+                    "body": replayed.body or "(original body was not saved)",
+                    "date": replayed.date,
+                },
+                replies=None,
+                already_replied=True,
+                chosen_reply=done_entry.chosen_reply,
+                replied_at=done_entry.replied_at,
+            )
+
     cached = reply_store.get_pending(req.message_id) if reply_store is not None else None
 
     try:

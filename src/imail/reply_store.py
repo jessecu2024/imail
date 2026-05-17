@@ -45,7 +45,13 @@ class PendingEntry:
 
 @dataclass(frozen=True)
 class DoneEntry:
-    """A handled email: trio dropped, chosen reply kept for the local Sent view."""
+    """A handled email: trio dropped, original message + chosen reply kept.
+
+    ``body`` is the original incoming email's body — kept so the user can
+    re-read what they replied to without an IMAP round-trip (and so the
+    inbox view can show the original alongside the saved reply when
+    the user clicks an already-replied row).
+    """
 
     message_id: str
     sender: str
@@ -53,6 +59,7 @@ class DoneEntry:
     date: str
     chosen_reply: str
     replied_at: str  # ISO-8601 UTC, second precision
+    body: str = ""
 
 
 class ReplyStore:
@@ -129,21 +136,32 @@ class ReplyStore:
             self._ensure_loaded()
             return self._done.get(message_id)
 
-    def mark_done(self, message_id: str, chosen_reply: str) -> DoneEntry:
-        """Promote pending → done, keeping only the chosen reply text.
+    def mark_done(
+        self,
+        message_id: str,
+        chosen_reply: str,
+        *,
+        email: EmailMsg | None = None,
+    ) -> DoneEntry:
+        """Promote pending → done, keeping the chosen reply and the original body.
 
-        Falls back to empty metadata if there's no pending entry (e.g. the
-        message was triaged through the batch flow without a prefetch hit).
+        Metadata source priority:
+          1. ``email`` kwarg, if provided (server has it via ``_session.current``).
+          2. The pending entry, if one was prefetched.
+          3. Empty strings otherwise — the entry still records that the user
+             replied, just without the original body / headers.
         """
         with self._lock:
             self._ensure_loaded()
             pending = self._pending.pop(message_id, None)
-            if pending is not None:
-                sender = pending.email.sender
-                subject = pending.email.subject
-                date = pending.email.date
+            source = email if email is not None else (pending.email if pending else None)
+            if source is not None:
+                sender = source.sender
+                subject = source.subject
+                date = source.date
+                body = source.body
             else:
-                sender = subject = date = ""
+                sender = subject = date = body = ""
             entry = DoneEntry(
                 message_id=message_id,
                 sender=sender,
@@ -151,6 +169,7 @@ class ReplyStore:
                 date=date,
                 chosen_reply=chosen_reply,
                 replied_at=datetime.now(UTC).isoformat(timespec="seconds"),
+                body=body,
             )
             self._done[message_id] = entry
             self._persist()
@@ -202,6 +221,7 @@ class ReplyStore:
                     "date": d.date,
                     "chosen_reply": d.chosen_reply,
                     "replied_at": d.replied_at,
+                    "body": d.body,
                 }
                 for mid, d in self._done.items()
             },

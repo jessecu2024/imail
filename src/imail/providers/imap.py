@@ -16,6 +16,7 @@ import contextlib
 import email
 import email.policy
 import imaplib
+import logging
 import smtplib
 import time
 from collections.abc import Sequence
@@ -24,6 +25,8 @@ from email.header import decode_header, make_header
 from email.message import EmailMessage, Message
 
 from imail.providers.base import EmailMsg, FolderKind, ProviderError
+
+logger = logging.getLogger("imail.providers.imap")
 
 # RFC 2971 IMAP ID extension isn't in Python's stdlib command table.
 # Register it as valid in AUTH and SELECTED states so _simple_command("ID", ...)
@@ -282,10 +285,11 @@ class ImapProvider:
     def fetch_message(self, kind: FolderKind, message_id: str) -> EmailMsg:
         """Return one message with full body.
 
-        163 sometimes returns the BODY.PEEK[] response interleaved with bare
-        bytes or None entries (especially for messages in 已发送邮件). We try
-        UID FETCH first, then fall back to a sequence-number FETCH by looking
-        the UID up via SEARCH UID — that path works on every server we've seen.
+        163 (and to a lesser extent QQ) is inconsistent about how it answers
+        FETCH in non-INBOX folders. The same message that's readable in INBOX
+        can come back with an empty payload from `已发送邮件` or `已删除`. We
+        try three escalating shapes; logging the raw response if all three
+        fail lets us diagnose the next quirk without another round-trip.
         """
         conn = self._ensure_connected()
         folder = self._get_folder(kind, conn)
@@ -293,29 +297,56 @@ class ImapProvider:
         if typ != "OK":
             raise ProviderError(f"Could not select {folder}.")
 
-        # --- attempt 1: UID FETCH directly ---
+        last_fetched: object = None
+
+        # --- attempt 1: UID FETCH BODY.PEEK[] ---
         typ, fetched = conn.uid("FETCH", message_id, "(BODY.PEEK[])")
+        last_fetched = fetched
         msg = _first_body(fetched) if typ == "OK" else None
-        if msg is not None:
+        if msg:
             return self._parse_message(message_id, msg)
 
-        # --- attempt 2: SEARCH UID → sequence-number FETCH ---
-        # Some IMAP servers (163 in particular) reply oddly to UID FETCH
-        # for messages in non-INBOX folders. Resolving the sequence number
-        # ourselves and using the plain FETCH command sidesteps that.
+        # --- attempt 2: SEARCH UID → sequence-number FETCH BODY.PEEK[] ---
+        # Some servers reply oddly to UID FETCH for non-INBOX folders.
+        # Resolving the sequence number ourselves sidesteps that path.
         typ, search_data = conn.uid("SEARCH", "UID", message_id)
         if typ == "OK" and search_data and search_data[0]:
             uid_match = search_data[0].split()
             if uid_match:
                 typ, fetched = conn.fetch(uid_match[0], "(BODY.PEEK[])")
+                last_fetched = fetched
                 if typ == "OK":
                     body = _first_body(fetched)
-                    if body is not None:
+                    if body:
                         return self._parse_message(message_id, body)
 
+        # --- attempt 3: UID FETCH RFC822 ---
+        # The legacy RFC822 fetch attribute returns the full message text the
+        # same way BODY.PEEK[] does but takes a different server code path —
+        # which is enough to dislodge 163's empty response in some folders.
+        typ, fetched = conn.uid("FETCH", message_id, "(RFC822)")
+        last_fetched = fetched
+        if typ == "OK":
+            body = _first_body(fetched)
+            if body:
+                return self._parse_message(message_id, body)
+
+        # Diagnostic: log a short repr of the raw FETCH response so the next
+        # report includes what the server actually returned.
+        try:
+            preview = repr(last_fetched)[:400]
+        except Exception:
+            preview = "<unrepresentable>"
+        logger.warning(
+            "fetch_message: empty body for %s in %s — last response was %s",
+            message_id,
+            folder,
+            preview,
+        )
         raise ProviderError(
             f"Could not retrieve message {message_id} from {folder} "
-            "(empty body returned by both UID FETCH and SEARCH-then-FETCH)."
+            "(server returned no body via BODY.PEEK[] or RFC822; "
+            "check the server log for the raw response)."
         )
 
     def search(self, kind: FolderKind, query: str, limit: int = 50) -> list[EmailMsg]:
@@ -554,8 +585,15 @@ def _first_body(fetched: object) -> bytes | None:
     """Pull the first (envelope, body) tuple out of an imaplib FETCH response.
 
     imaplib responses are bytes-sequences punctuated with `b')'` markers and
-    sometimes `None` placeholders (notably 163's `已发送邮件`). Walk the list
-    and return the first body-shaped bytes payload.
+    sometimes `None` placeholders (notably 163's `已发送邮件` / `已删除`). We
+    do two passes:
+
+    1. The standard shape: a `(envelope, body)` tuple where the body bytes
+       are non-empty.
+    2. The 163 fallback shape: a stray top-level `bytes` chunk that holds
+       the RFC822 source directly, with the envelope coming separately.
+       We accept any chunk that looks like an email by sniffing the first
+       few bytes for a recognised header line.
     """
     if not isinstance(fetched, (list, tuple)):
         return None
@@ -563,7 +601,25 @@ def _first_body(fetched: object) -> bytes | None:
         if chunk is None:
             continue
         if isinstance(chunk, tuple) and len(chunk) >= 2 and isinstance(chunk[1], bytes):
-            return chunk[1]
+            body = chunk[1]
+            if body:
+                return body
+    # Fallback: scan for a bare bytes chunk that looks like RFC822.
+    for chunk in fetched:
+        if isinstance(chunk, bytes) and chunk and chunk != b")":
+            head = chunk[:200].lower()
+            if any(
+                marker in head
+                for marker in (
+                    b"from:",
+                    b"to:",
+                    b"subject:",
+                    b"date:",
+                    b"received:",
+                    b"message-id:",
+                )
+            ):
+                return chunk
     return None
 
 
