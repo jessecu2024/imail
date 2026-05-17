@@ -236,11 +236,64 @@ body {
 }
 .message-row.unread .row-subject { font-weight: 600; }
 
-/* Subtle inline "danger" link used in the triage footer for delete. */
-.link.danger-link { color: var(--neg); }
-.link.danger-link:hover { text-decoration: underline; }
+/* Small inline × delete in each list row. Revealed on row hover so it
+   doesn't compete with the row's primary "open this email" affordance. */
+.message-row { position: relative; padding-right: 2.4rem; }
+.row-delete {
+  position: absolute;
+  top: 50%;
+  right: 0.6rem;
+  transform: translateY(-50%);
+  width: 1.8rem;
+  height: 1.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-soft);
+  opacity: 0;
+  transition: opacity 80ms ease, background 100ms ease, color 100ms ease;
+  cursor: pointer;
+}
+.message-row:hover .row-delete,
+.row-delete:focus-visible { opacity: 1; }
+.row-delete:hover {
+  background: rgba(248, 113, 113, 0.18);
+  color: var(--neg);
+}
 
-/* Already-handled inbox row: green left-stripe, dimmed look, "已回复" badge. */
+/* Small × button anchored to the top-right corner of the email card. Sits
+   visually attached to the email being deleted so the user always knows
+   what target the button refers to. */
+.email-card { position: relative; }
+.card-delete {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.6rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--text-soft);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+.card-delete:hover {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: var(--neg);
+  color: var(--neg);
+}
+.card-delete:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Already-handled inbox row: green left-stripe, dimmed look, Replied badge. */
 .message-row.replied {
   background: var(--pos-bg);
   border-left-color: var(--pos);

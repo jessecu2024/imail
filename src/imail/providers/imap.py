@@ -483,8 +483,8 @@ class ImapProvider:
         except smtplib.SMTPAuthenticationError as exc:
             raise ProviderError(
                 f"SMTP auth failed for {self._username}@{self._smtp_host}: {exc}. "
-                "For 163/QQ, make sure the password is the 16-character 授权码, "
-                "not your normal login password."
+                "For 163/QQ, make sure the password is the 16-character app password "
+                "(`授权码` on the 163 settings page), not your normal login password."
             ) from exc
         except smtplib.SMTPException as exc:
             raise ProviderError(f"SMTP send failed: {exc}") from exc

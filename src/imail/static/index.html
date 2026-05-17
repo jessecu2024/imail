@@ -217,9 +217,18 @@
                   <span class="date" x-text="shortDate(m.date)"></span>
                 </div>
                 <div class="row-subject">
-                  <span x-show="m.replied" class="replied-badge">✓ 已回复</span>
+                  <span x-show="m.replied" class="replied-badge">Replied</span>
                   <span x-text="m.subject"></span>
                 </div>
+                <span
+                  class="row-delete"
+                  role="button"
+                  :title="rowDeleteTitle(m)"
+                  @click.stop="deleteFromList(m)"
+                  @keydown.enter.stop.prevent="deleteFromList(m)"
+                  @keydown.space.stop.prevent="deleteFromList(m)"
+                  tabindex="0"
+                >×</span>
               </button>
             </li>
           </template>
@@ -234,6 +243,12 @@
 
         <template x-if="selectedMessage">
           <article class="email-card">
+            <button
+              class="card-delete"
+              :title="cardDeleteTitle()"
+              @click="deleteCurrent()"
+              :disabled="busy"
+            >×</button>
             <div class="email-header">
               <div class="email-from">
                 <span class="muted">From</span>
@@ -291,13 +306,6 @@
           </div>
         </template>
 
-        <template x-if="selectedMessage && selectedFolder === 'sent'">
-          <div class="message-actions">
-            <button class="danger" @click="deleteSentMessage()" :disabled="busy">
-              🗑 <span x-text="isLocalSent(selectedMessage.id) ? '删除本地记录' : '删除(本机 + 163 + 其他设备)'"></span>
-            </button>
-          </div>
-        </template>
       </section>
 
       <!-- =============== TRIAGE (batch or single) =============== -->
@@ -329,6 +337,12 @@
         <template x-if="!triage.done && triage.current && triage.current.alreadyReplied">
           <div>
             <article class="email-card">
+              <button
+                class="card-delete"
+                title="Delete this email (removes from server + all devices)"
+                @click="deleteCurrentInbox()"
+                :disabled="busy"
+              >×</button>
               <div class="email-header">
                 <div class="email-from">
                   <span class="muted">From</span>
@@ -343,7 +357,7 @@
             <div class="replied-banner">
               <span class="replied-icon">✓</span>
               <div>
-                <strong>已回复</strong>
+                <strong>Already replied</strong>
                 <span class="muted">at <span x-text="longDate(triage.current.repliedAt)"></span></span>
                 <p class="muted small">No new draft generated — tokens saved.</p>
               </div>
@@ -354,18 +368,18 @@
               <header class="saved-reply-header">YOUR SAVED REPLY</header>
               <pre class="saved-reply-body" x-text="triage.current.chosenReply"></pre>
             </article>
-
-            <div class="message-actions">
-              <button class="danger" @click="deleteCurrentInbox()" :disabled="busy">
-                🗑 删除此邮件 (本机 + 163 + 其他设备)
-              </button>
-            </div>
           </div>
         </template>
 
         <template x-if="!triage.done && triage.current && !triage.current.alreadyReplied">
           <div>
             <article class="email-card">
+              <button
+                class="card-delete"
+                title="Delete this email (removes from server + all devices)"
+                @click="deleteCurrentInbox()"
+                :disabled="busy"
+              >×</button>
               <div class="email-header">
                 <div class="email-from">
                   <span class="muted">From</span>
@@ -406,7 +420,6 @@
                 <kbd>S</kbd> skip &nbsp;·&nbsp;
                 <kbd>Q</kbd> end
               </span>
-              <button class="link danger-link" @click="deleteCurrentInbox()" :disabled="busy">🗑 删除</button>
               <template x-if="triage.mode === 'batch'">
                 <button class="link" @click="skip()" :disabled="busy">skip</button>
               </template>

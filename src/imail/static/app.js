@@ -339,7 +339,7 @@ function app() {
 
     _markRepliedInCachedInbox(messageId) {
       // Flip `replied: true` on the matching cached row so the inbox shows
-      // the green "已回复" badge the moment we navigate back, without
+      // the green Replied badge the moment we navigate back, without
       // waiting for the next /api/folders round-trip.
       if (!this.selectedAccount) return;
       this.messageList = this.messageList.map((m) =>
@@ -388,12 +388,65 @@ function app() {
       return typeof id === "string" && id.startsWith("local:");
     },
 
+    /* ---------- Delete helpers (titles + dispatch) ---------- */
+    rowDeleteTitle(m) {
+      // Tooltip on the small × button in each list row.
+      if (this.selectedFolder === "sent" && this.isLocalSent(m.id)) {
+        return "Delete local saved-reply record";
+      }
+      return "Delete (also removes from server + all devices)";
+    },
+
+    cardDeleteTitle() {
+      // Tooltip on the × button inside the email card (detail view).
+      if (this.selectedFolder === "sent" && this.selectedMessage && this.isLocalSent(this.selectedMessage.id)) {
+        return "Delete local saved-reply record";
+      }
+      return "Delete this email (removes from server + all devices)";
+    },
+
+    deleteCurrent() {
+      // Dispatches from the in-card × button to the per-folder handler.
+      if (this.view === "triage") return this.deleteCurrentInbox();
+      if (this.view !== "message" || !this.selectedMessage) return;
+      const f = this.selectedFolder;
+      if (f === "drafts") return this.deleteDraft();
+      if (f === "junk") return this.deleteJunk();
+      if (f === "sent") return this.deleteSentMessage();
+      if (f === "inbox") return this.deleteSelectedInbox();
+    },
+
+    /* ---------- Delete: from list row (no need to open the email) ---------- */
+    async deleteFromList(m) {
+      if (!this.selectedAccount || !this.selectedFolder) return;
+      const folder = this.selectedFolder;
+      const isLocal = folder === "sent" && this.isLocalSent(m.id);
+      const subjectHint = m.subject ? `\n\n"${m.subject}"` : "";
+      const prompt = isLocal
+        ? `Delete this local saved-reply record?${subjectHint}`
+        : `Delete this email from ${folder.toUpperCase()}? Also removes it from the server and any other device logged into this mailbox. This cannot be undone.${subjectHint}`;
+      if (!confirm(prompt)) return;
+      this.busy = true;
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/${folder}/${encodeURIComponent(m.id)}`;
+        const res = await fetch(url, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        this.messageList = this.messageList.filter((x) => x.id !== m.id);
+        this._saveCachedList(this.selectedAccount, folder, this.messageList);
+        this.message = "✓ Deleted.";
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
     async deleteSentMessage() {
       if (!this.selectedMessage) return;
       const isLocal = this.isLocalSent(this.selectedMessage.id);
       const prompt = isLocal
-        ? "删除本地保存的这条回复记录?"
-        : "Delete this from Sent? This also removes it from 163 / other devices.";
+        ? "Delete this local saved-reply record?"
+        : "Delete this email from Sent? Also removes it from the server and any other device logged into this mailbox.";
       if (!confirm(prompt)) return;
       this.busy = true;
       try {
@@ -410,13 +463,37 @@ function app() {
       }
     },
 
+    async deleteSelectedInbox() {
+      // Inbox detail view (reachable from the in-card × when not in triage).
+      // In practice inbox click jumps straight to triage so this path is rare,
+      // but the dispatcher needs a handler.
+      if (!this.selectedMessage) return;
+      if (!confirm("Delete this email? Removes from the server and any other device logged into this mailbox. Cannot be undone.")) return;
+      this.busy = true;
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/inbox/${encodeURIComponent(this.selectedMessage.id)}`;
+        const res = await fetch(url, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        this._dropFromList(this.selectedMessage.id);
+        this.selectedMessage = null;
+        this.view = "folder";
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
     async deleteCurrentInbox() {
       // Called from the inbox triage view (either the picker stage or the
       // already-replied banner). Removes the email from IMAP (so 163 webmail
       // and other clients also see it gone) AND drops the local reply-store
-      // record so no "已回复" badge dangles.
+      // record so no Replied badge dangles.
       if (!this.triage.current) return;
-      if (!confirm("删除这封邮件? 本机 imail 记录 + 163 服务器 + 其他设备登录都会看不到。不可恢复。")) return;
+      const subjectHint = this.triage.current.email.subject
+        ? `\n\n"${this.triage.current.email.subject}"`
+        : "";
+      if (!confirm(`Delete this email? Removes the imail record AND expunges it on the server, so other devices logged into this mailbox also stop seeing it. Cannot be undone.${subjectHint}`)) return;
       this.busy = true;
       this.message = "";
       const id = this.triage.current.email.id;
@@ -424,7 +501,6 @@ function app() {
         const url = `/api/messages/${this.selectedAccount.id}/inbox/${encodeURIComponent(id)}`;
         const res = await fetch(url, { method: "DELETE" });
         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
-        // Drop from local cached list so it doesn't briefly flash back.
         this.messageList = this.messageList.filter((m) => m.id !== id);
         this._saveCachedList(this.selectedAccount, "inbox", this.messageList);
         this.message = "✓ Deleted.";
