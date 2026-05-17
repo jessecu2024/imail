@@ -59,8 +59,18 @@ For most users, the forwarding workflow above is good enough indefinitely.
 
 ## Validated tenants
 
-- **City University of Hong Kong** (Microsoft 365, IMAP blocked, user-level
-  app registration blocked) — confirmed working 2026-05-17 via Outlook
-  forwarding to 163.
+- **City University of Hong Kong — Alumni tenant** (`my.cityu.edu.hk`,
+  Microsoft 365):
+  - Basic-auth IMAP/POP: ❌ greyed out in Outlook web
+  - User-level Azure app registration: ❌ "You don't have permission"
+  - Microsoft Graph OAuth path: ❌ even Microsoft's own *Graph Explorer*
+    fails — `Mail.Read` requires admin consent for this tenant. So
+    building a custom Microsoft Graph provider in imail would hit the
+    same wall regardless of client_id used.
+  - Forwarding to 163: ✅ working, confirmed 2026-05-17.
+
+  Translation: there is no path to talk to this mailbox directly from a
+  third-party client. The forwarding workflow above is the only option
+  unless CityU IT grants per-user admin consent for the Mail scopes.
 
 If you set this up on another tenant, add it here.
