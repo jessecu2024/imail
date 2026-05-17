@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from imail.reply_generator import ReplyTrio, parse_reply_json
+from imail.reply_generator import (
+    SYSTEM_PROMPT,
+    ReplyTrio,
+    extract_first_name,
+    parse_reply_json,
+)
 
 
 def test_parse_clean_json() -> None:
@@ -50,3 +55,41 @@ def test_parse_legacy_missing_is_spam_defaults_to_false() -> None:
 def test_parse_raises_when_no_json() -> None:
     with pytest.raises(ValueError, match="JSON"):
         parse_reply_json("the model went rogue and produced only prose")
+
+
+# ---------- first-name extraction (used for `Dear <FirstName>,` salutation) ---------- #
+
+
+def test_extract_first_name_display_name() -> None:
+    assert extract_first_name("Alex Wang <alex@x.com>") == "Alex"
+
+
+def test_extract_first_name_last_comma_first() -> None:
+    assert extract_first_name('"Wang, Alex" <alex@x.com>') == "Alex"
+
+
+def test_extract_first_name_email_local_part_with_dot() -> None:
+    assert extract_first_name("alex.wang@x.com") == "Alex"
+
+
+def test_extract_first_name_email_only_no_separators() -> None:
+    assert extract_first_name("alex@x.com") == "Alex"
+
+
+def test_extract_first_name_empty_returns_empty() -> None:
+    assert extract_first_name("") == ""
+
+
+def test_extract_first_name_malformed_returns_empty() -> None:
+    assert extract_first_name("   <>   ") == ""
+
+
+# ---------- system prompt enforces the Dear / Best regards format ---------- #
+
+
+def test_system_prompt_requires_dear_salutation() -> None:
+    assert "Dear" in SYSTEM_PROMPT
+
+
+def test_system_prompt_requires_best_regards_closing() -> None:
+    assert "Best regards" in SYSTEM_PROMPT

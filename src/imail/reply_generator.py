@@ -8,6 +8,7 @@ in one session is essentially free for the cached portion.
 
 from __future__ import annotations
 
+import email.utils
 import json
 from dataclasses import dataclass
 
@@ -41,13 +42,21 @@ The three tones are FIXED:
                keep this tone brief and acknowledging.
 3. NEGATIVE  — polite refusal / disagreement / "no thanks", graceful and kind.
 
-Rules for every reply:
+Rules for every reply (this format is REQUIRED, no variants):
 
-- Sign off using only the user's first name on a new line (no full signature).
-- Match the language of the incoming email (English / Chinese / etc.).
-- 2-5 sentences. No "Subject:" line, no quoted history, no markdown.
-- Address the sender by their first name if obvious from the From header,
-  otherwise omit the salutation.
+- Open with `Dear <FirstName>,` on its own line, where FirstName is taken
+  from the "Sender first name" field provided below. Follow it with a
+  blank line, then the body.
+- Close with exactly two lines at the end:
+      Best regards,
+      <Recipient name from the "Recipient (me)" field>
+  No "Thanks", no "Cheers", no "Sincerely" — always `Best regards,` then
+  the recipient name on the next line.
+- 2-5 sentences in the body. No "Subject:" line, no quoted history,
+  no markdown.
+- Match the language of the incoming email body for the middle content,
+  but keep the `Dear ... ,` salutation and `Best regards,` sign-off in
+  English as shown — even if the email is in Chinese.
 - Do not invent facts. If a fact is needed, hedge ("I'll check and confirm...").
 
 If is_spam is true, set all three reply fields to the empty string "" —
@@ -113,15 +122,45 @@ class ReplyGenerator:
 
     def _build_user_message(self, email: EmailMsg) -> str:
         body = email.body[:4000] if email.body else email.snippet
+        first_name = extract_first_name(email.sender) or "there"
         return (
             f"Recipient (me): {self._signoff}\n"
             f"From: {email.sender}\n"
+            f"Sender first name (use in 'Dear ...,'): {first_name}\n"
             f"Subject: {email.subject}\n"
             f"---\n"
             f"{body}\n"
             f"---\n"
             "Draft three reply versions (positive / neutral / negative)."
         )
+
+
+def extract_first_name(sender_header: str) -> str:
+    """Best-effort parse of the sender's first name from a From header.
+
+    Used to feed the LLM a clean `Dear <FirstName>,` opener. Handles
+    `Display Name <addr>`, `"Last, First" <addr>` (comma-reversed
+    surname-first form common in directory listings), and bare addresses
+    by capitalising the local-part. Returns "" when nothing usable is
+    parseable so the caller can pick its own fallback.
+    """
+    if not sender_header or not sender_header.strip():
+        return ""
+    name, addr = email.utils.parseaddr(sender_header)
+    name = name.strip().strip('"').strip()
+    if name:
+        if "," in name:
+            last, _, first = name.partition(",")
+            first = first.strip()
+            if first:
+                return first.split()[0]
+            # Fall through to using the part before the comma if the
+            # right side was empty for some reason.
+            return last.strip().split()[0] if last.strip() else ""
+        return name.split()[0]
+    local = addr.split("@", 1)[0] if addr else ""
+    tokens = local.replace(".", " ").replace("_", " ").replace("-", " ").split()
+    return tokens[0].capitalize() if tokens else ""
 
 
 def parse_reply_json(raw: str) -> ReplyTrio:
