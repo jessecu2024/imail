@@ -384,6 +384,62 @@ function app() {
       this.view = "folder";
     },
 
+    isLocalSent(id) {
+      return typeof id === "string" && id.startsWith("local:");
+    },
+
+    async deleteSentMessage() {
+      if (!this.selectedMessage) return;
+      const isLocal = this.isLocalSent(this.selectedMessage.id);
+      const prompt = isLocal
+        ? "删除本地保存的这条回复记录?"
+        : "Delete this from Sent? This also removes it from 163 / other devices.";
+      if (!confirm(prompt)) return;
+      this.busy = true;
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/sent/${encodeURIComponent(this.selectedMessage.id)}`;
+        const res = await fetch(url, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        this._dropFromList(this.selectedMessage.id);
+        this.selectedMessage = null;
+        this.view = "folder";
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    async deleteCurrentInbox() {
+      // Called from the inbox triage view (either the picker stage or the
+      // already-replied banner). Removes the email from IMAP (so 163 webmail
+      // and other clients also see it gone) AND drops the local reply-store
+      // record so no "已回复" badge dangles.
+      if (!this.triage.current) return;
+      if (!confirm("删除这封邮件? 本机 imail 记录 + 163 服务器 + 其他设备登录都会看不到。不可恢复。")) return;
+      this.busy = true;
+      this.message = "";
+      const id = this.triage.current.email.id;
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/inbox/${encodeURIComponent(id)}`;
+        const res = await fetch(url, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        // Drop from local cached list so it doesn't briefly flash back.
+        this.messageList = this.messageList.filter((m) => m.id !== id);
+        this._saveCachedList(this.selectedAccount, "inbox", this.messageList);
+        this.message = "✓ Deleted.";
+        await fetch("/api/triage/end", { method: "POST" });
+        setTimeout(() => {
+          this.endTriage();
+          this.refreshFolder();
+        }, 500);
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
     async deleteDraft() {
       if (!this.selectedMessage || !confirm("Delete this draft?")) return;
       this.busy = true;

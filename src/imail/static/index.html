@@ -290,6 +290,14 @@
             </button>
           </div>
         </template>
+
+        <template x-if="selectedMessage && selectedFolder === 'sent'">
+          <div class="message-actions">
+            <button class="danger" @click="deleteSentMessage()" :disabled="busy">
+              🗑 <span x-text="isLocalSent(selectedMessage.id) ? '删除本地记录' : '删除(本机 + 163 + 其他设备)'"></span>
+            </button>
+          </div>
+        </template>
       </section>
 
       <!-- =============== TRIAGE (batch or single) =============== -->
@@ -346,6 +354,12 @@
               <header class="saved-reply-header">YOUR SAVED REPLY</header>
               <pre class="saved-reply-body" x-text="triage.current.chosenReply"></pre>
             </article>
+
+            <div class="message-actions">
+              <button class="danger" @click="deleteCurrentInbox()" :disabled="busy">
+                🗑 删除此邮件 (本机 + 163 + 其他设备)
+              </button>
+            </div>
           </div>
         </template>
 
@@ -392,6 +406,7 @@
                 <kbd>S</kbd> skip &nbsp;·&nbsp;
                 <kbd>Q</kbd> end
               </span>
+              <button class="link danger-link" @click="deleteCurrentInbox()" :disabled="busy">🗑 删除</button>
               <template x-if="triage.mode === 'batch'">
                 <button class="link" @click="skip()" :disabled="busy">skip</button>
               </template>

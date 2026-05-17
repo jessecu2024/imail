@@ -136,6 +136,18 @@ class ReplyStore:
             self._ensure_loaded()
             return self._done.get(message_id)
 
+    def drop_done(self, message_id: str) -> bool:
+        """Forget a done entry (the saved-reply record). Returns True if the
+        entry existed. Called when the user explicitly deletes the underlying
+        email — we don't want a dangling "已回复" badge or a local Sent row
+        pointing at content the user just removed."""
+        with self._lock:
+            self._ensure_loaded()
+            if self._done.pop(message_id, None) is not None:
+                self._persist()
+                return True
+            return False
+
     def mark_done(
         self,
         message_id: str,

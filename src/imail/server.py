@@ -593,12 +593,36 @@ def delete_message(
     kind: Literal["inbox", "drafts", "sent", "junk"],
     message_id: str,
 ) -> dict[str, bool]:
+    """Delete a message everywhere — on the IMAP server (so 163 / other
+    clients also see it gone) plus any local reply-store state attached to
+    the same id (the "已回复" badge, the pending trio, the synthetic Sent
+    row). The synthetic ``local:<mid>`` rows in Sent have no IMAP analog,
+    so for those we only touch the local store.
+    """
+    # Synthetic Sent row — purely a store entry, nothing on the IMAP server.
+    if kind == "sent" and message_id.startswith(_LOCAL_SENT_PREFIX):
+        original_id = message_id[len(_LOCAL_SENT_PREFIX) :]
+        if not _store_for(account_id).drop_done(original_id):
+            raise HTTPException(404, "Local sent entry not found.")
+        return {"ok": True}
+
+    # Real IMAP message. The STORE +Deleted + EXPUNGE in provider.delete_message
+    # is what makes the change sync to 163 webmail and any other client logged
+    # into the same mailbox.
     try:
         with use_provider(account_id) as provider:
             provider.delete_message(kind, message_id)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
     _body_drop(account_id, kind, message_id)
+
+    # Clear any reply-store record tied to this id — the original email is
+    # gone, so the "已回复" badge / pending trio / saved-reply mirror would
+    # otherwise dangle.
+    if kind == "inbox":
+        store = _store_for(account_id)
+        store.drop_done(message_id)
+        store.drop_pending(message_id)
     return {"ok": True}
 
 

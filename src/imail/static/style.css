@@ -236,6 +236,10 @@ body {
 }
 .message-row.unread .row-subject { font-weight: 600; }
 
+/* Subtle inline "danger" link used in the triage footer for delete. */
+.link.danger-link { color: var(--neg); }
+.link.danger-link:hover { text-decoration: underline; }
+
 /* Already-handled inbox row: green left-stripe, dimmed look, "已回复" badge. */
 .message-row.replied {
   background: var(--pos-bg);

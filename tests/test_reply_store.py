@@ -122,6 +122,23 @@ def test_done_entries_newest_first(store: ReplyStore) -> None:
         assert entries[0].replied_at >= entries[-1].replied_at
 
 
+def test_drop_done_removes_entry_and_persists(tmp_path: Path) -> None:
+    store = ReplyStore.for_account(tmp_path, "acct1")
+    store.mark_done("m1", "Dear Alex,\n\nYes!\n\nBest regards,\nJie Xu")
+    assert store.is_done("m1")
+
+    assert store.drop_done("m1") is True
+    assert store.is_done("m1") is False
+
+    # Persists — a fresh instance must not see the dropped entry.
+    fresh = ReplyStore.for_account(tmp_path, "acct1")
+    assert fresh.is_done("m1") is False
+
+
+def test_drop_done_returns_false_for_unknown(store: ReplyStore) -> None:
+    assert store.drop_done("nope") is False
+
+
 def test_done_persists_across_instances(tmp_path: Path) -> None:
     a = ReplyStore.for_account(tmp_path, "acct1")
     a.put_pending("m1", _email(), _trio())
