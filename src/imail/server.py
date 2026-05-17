@@ -38,7 +38,7 @@ logger = logging.getLogger("imail.server")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="imail", version="1.1.1")
+app = FastAPI(title="imail", version="1.1.2")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

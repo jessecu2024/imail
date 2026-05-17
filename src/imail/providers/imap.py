@@ -270,22 +270,43 @@ class ImapProvider:
         return _parse_envelope_list(fetched)
 
     def fetch_message(self, kind: FolderKind, message_id: str) -> EmailMsg:
-        """Return one message with full body."""
+        """Return one message with full body.
+
+        163 sometimes returns the BODY.PEEK[] response interleaved with bare
+        bytes or None entries (especially for messages in 已发送邮件). We try
+        UID FETCH first, then fall back to a sequence-number FETCH by looking
+        the UID up via SEARCH UID — that path works on every server we've seen.
+        """
         conn = self._ensure_connected()
         folder = self._get_folder(kind, conn)
         typ, _ = conn.select(folder, readonly=True)
         if typ != "OK":
             raise ProviderError(f"Could not select {folder}.")
 
+        # --- attempt 1: UID FETCH directly ---
         typ, fetched = conn.uid("FETCH", message_id, "(BODY.PEEK[])")
-        if typ != "OK" or not fetched:
-            raise ProviderError(f"Message {message_id} not found in {folder}.")
+        msg = _first_body(fetched) if typ == "OK" else None
+        if msg is not None:
+            return self._parse_message(message_id, msg)
 
-        for chunk in fetched:
-            if isinstance(chunk, tuple) and len(chunk) >= 2 and isinstance(chunk[1], bytes):
-                return self._parse_message(message_id, chunk[1])
+        # --- attempt 2: SEARCH UID → sequence-number FETCH ---
+        # Some IMAP servers (163 in particular) reply oddly to UID FETCH
+        # for messages in non-INBOX folders. Resolving the sequence number
+        # ourselves and using the plain FETCH command sidesteps that.
+        typ, search_data = conn.uid("SEARCH", "UID", message_id)
+        if typ == "OK" and search_data and search_data[0]:
+            uid_match = search_data[0].split()
+            if uid_match:
+                typ, fetched = conn.fetch(uid_match[0], "(BODY.PEEK[])")
+                if typ == "OK":
+                    body = _first_body(fetched)
+                    if body is not None:
+                        return self._parse_message(message_id, body)
 
-        raise ProviderError(f"Could not parse message {message_id} in {folder}.")
+        raise ProviderError(
+            f"Could not retrieve message {message_id} from {folder} "
+            "(empty body returned by both UID FETCH and SEARCH-then-FETCH)."
+        )
 
     def search(self, kind: FolderKind, query: str, limit: int = 50) -> list[EmailMsg]:
         """IMAP TEXT search: matches the query against headers AND body.
@@ -517,6 +538,23 @@ def _extract_plain_body(msg: Message) -> str:
     if isinstance(payload, bytes):
         return payload.decode(msg.get_content_charset() or "utf-8", errors="replace")
     return str(payload or "")
+
+
+def _first_body(fetched: object) -> bytes | None:
+    """Pull the first (envelope, body) tuple out of an imaplib FETCH response.
+
+    imaplib responses are bytes-sequences punctuated with `b')'` markers and
+    sometimes `None` placeholders (notably 163's `已发送邮件`). Walk the list
+    and return the first body-shaped bytes payload.
+    """
+    if not isinstance(fetched, (list, tuple)):
+        return None
+    for chunk in fetched:
+        if chunk is None:
+            continue
+        if isinstance(chunk, tuple) and len(chunk) >= 2 and isinstance(chunk[1], bytes):
+            return chunk[1]
+    return None
 
 
 def _extract_flags(envelope_header: bytes) -> set[str]:

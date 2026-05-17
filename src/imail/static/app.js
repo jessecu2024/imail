@@ -208,23 +208,21 @@ function app() {
     },
 
     longDate(raw) {
-      // Used by the triage and message-detail headers — friendlier than the
-      // raw RFC822 string (e.g. "Sat, 17 May 2026 12:34 PM" instead of
-      // "Sat, 17 May 2026 04:34:56 +0000").
+      // Concrete date + time, every time. Format: "May 17, 2026 · 14:32"
+      // (or your locale's equivalent). No relative phrasing like "Today".
       if (!raw) return "";
       const d = new Date(raw);
       if (Number.isNaN(d.getTime())) return raw;
-      const now = new Date();
-      const sameDay = d.toDateString() === now.toDateString();
-      const yest = new Date(now); yest.setDate(now.getDate() - 1);
-      const isYesterday = d.toDateString() === yest.toDateString();
-      const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      if (sameDay)      return `Today · ${time}`;
-      if (isYesterday)  return `Yesterday · ${time}`;
-      const sameYear = d.getFullYear() === now.getFullYear();
-      const datePart = d.toLocaleDateString([], sameYear
-        ? { month: "short", day: "numeric" }
-        : { year: "numeric", month: "short", day: "numeric" });
+      const datePart = d.toLocaleDateString([], {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+      const time = d.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
       return `${datePart} · ${time}`;
     },
 
