@@ -287,6 +287,77 @@ class ImapProvider:
 
         raise ProviderError(f"Could not parse message {message_id} in {folder}.")
 
+    def search(self, kind: FolderKind, query: str, limit: int = 50) -> list[EmailMsg]:
+        """IMAP TEXT search: matches the query against headers AND body.
+
+        Query is treated as a single phrase. Surround user input with quotes so
+        the server treats it atomically rather than splitting on whitespace.
+        """
+        if not query.strip():
+            return []
+        conn = self._ensure_connected()
+        folder = self._get_folder(kind, conn)
+        typ, _ = conn.select(folder, readonly=True)
+        if typ != "OK":
+            raise ProviderError(f"Could not select {folder} for search.")
+
+        # `TEXT` matches every header + the body. Quote to keep multi-word
+        # queries together. CHARSET UTF-8 lets 163/QQ match Chinese terms.
+        escaped = query.replace('"', '\\"')
+        typ, data = conn.search("UTF-8", "TEXT", f'"{escaped}"')
+        if typ != "OK":
+            # Some servers (older 163) don't accept CHARSET; retry without.
+            typ, data = conn.search(None, "TEXT", f'"{escaped}"')
+            if typ != "OK":
+                raise ProviderError(f"IMAP search in {folder} failed.")
+
+        ids = data[0].split()
+        ids = list(reversed(ids))[:limit]
+        if not ids:
+            return []
+
+        id_set = ",".join(i.decode("ascii") for i in ids)
+        typ, fetched = conn.fetch(
+            id_set, "(UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])"
+        )
+        if typ != "OK":
+            raise ProviderError("IMAP envelope fetch failed for search results.")
+        return _parse_envelope_list(fetched)
+
+    def update_draft(self, message_id: str, new_body: str) -> str:
+        """Replace a draft's body by appending a new version and deleting the old.
+
+        Preserves the original To / Subject / In-Reply-To headers so the thread
+        relationship isn't lost.
+        """
+        # 1) Pull the original to recover headers we want to keep.
+        original = self.fetch_message("drafts", message_id)
+
+        # 2) Build the replacement message.
+        reply = EmailMessage()
+        reply.set_content(new_body)
+        reply["From"] = self._username
+        reply["To"] = original.sender or self._username
+        reply["Subject"] = original.subject or "(no subject)"
+
+        # 3) Append the new draft to the Drafts folder.
+        conn = self._ensure_connected()
+        folder = self._get_folder("drafts", conn)
+        date = imaplib.Time2Internaldate(time.time())
+        typ, response = conn.append(folder, "\\Draft", date, reply.as_bytes())
+        if typ != "OK":
+            raise ProviderError(f"APPEND replacement draft to {folder} failed: {response!r}")
+
+        # 4) Delete the original draft.
+        with contextlib.suppress(ProviderError):
+            self.delete_message("drafts", message_id)
+
+        # 5) Best-effort UIDNEXT lookup for the new id.
+        typ, status = conn.status(folder, "(UIDNEXT)")
+        if typ == "OK" and status:
+            return _parse_status_uidnext(status[0]) or "appended"
+        return "appended"
+
     def delete_message(self, kind: FolderKind, message_id: str) -> None:
         """Mark a message deleted and expunge. Mainly used for drafts."""
         conn = self._ensure_connected()

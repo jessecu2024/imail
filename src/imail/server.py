@@ -37,7 +37,7 @@ logger = logging.getLogger("imail.server")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="imail", version="1.0.0")
+app = FastAPI(title="imail", version="1.1.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -213,7 +213,7 @@ class StartRequest(BaseModel):
 
 class SingleTriageRequest(BaseModel):
     account_id: str
-    kind: Literal["inbox", "drafts", "sent"] = "inbox"
+    kind: Literal["inbox", "drafts", "sent", "junk"] = "inbox"
     message_id: str
 
 
@@ -330,7 +330,7 @@ def delete_account(account_id: str) -> dict[str, bool]:
 @app.get("/api/folders/{account_id}/{kind}", response_model=list[MessageSummary])
 def list_folder(
     account_id: str,
-    kind: Literal["inbox", "drafts", "sent"],
+    kind: Literal["inbox", "drafts", "sent", "junk"],
     background_tasks: BackgroundTasks,
 ) -> list[MessageSummary]:
     _, provider = _account_provider(account_id)
@@ -361,7 +361,7 @@ def list_folder(
 @app.get("/api/messages/{account_id}/{kind}/{message_id}", response_model=MessageDetail)
 def get_message(
     account_id: str,
-    kind: Literal["inbox", "drafts", "sent"],
+    kind: Literal["inbox", "drafts", "sent", "junk"],
     message_id: str,
 ) -> MessageDetail:
     _, provider = _account_provider(account_id)
@@ -383,12 +383,66 @@ def get_message(
 @app.delete("/api/messages/{account_id}/{kind}/{message_id}")
 def delete_message(
     account_id: str,
-    kind: Literal["inbox", "drafts", "sent"],
+    kind: Literal["inbox", "drafts", "sent", "junk"],
     message_id: str,
 ) -> dict[str, bool]:
     _, provider = _account_provider(account_id)
     try:
         provider.delete_message(kind, message_id)
+    except ProviderError as exc:
+        provider.close()
+        raise HTTPException(502, str(exc)) from exc
+    provider.close()
+    return {"ok": True}
+
+
+# ----------------------------------------------------------------------
+# Search, draft-edit, junk-restore
+# ----------------------------------------------------------------------
+@app.get("/api/search/{account_id}/{kind}", response_model=list[MessageSummary])
+def search_folder(
+    account_id: str,
+    kind: Literal["inbox", "drafts", "sent", "junk"],
+    q: str = "",
+) -> list[MessageSummary]:
+    _, provider = _account_provider(account_id)
+    try:
+        msgs = provider.search(kind, q, limit=50)
+    except ProviderError as exc:
+        provider.close()
+        raise HTTPException(502, str(exc)) from exc
+    provider.close()
+    return [
+        MessageSummary(
+            id=m.id, sender=m.sender, subject=m.subject, date=m.date, unread=m.unread,
+        )
+        for m in msgs
+    ]
+
+
+class EditDraftRequest(BaseModel):
+    body: str = Field(..., min_length=1)
+
+
+@app.post("/api/messages/{account_id}/drafts/{message_id}/edit")
+def edit_draft(account_id: str, message_id: str, req: EditDraftRequest) -> dict[str, str]:
+    """Replace a draft's body. Returns the new draft id."""
+    _, provider = _account_provider(account_id)
+    try:
+        new_id = provider.update_draft(message_id, req.body)
+    except ProviderError as exc:
+        provider.close()
+        raise HTTPException(502, str(exc)) from exc
+    provider.close()
+    return {"draft_id": new_id}
+
+
+@app.post("/api/messages/{account_id}/junk/{message_id}/restore")
+def restore_from_junk(account_id: str, message_id: str) -> dict[str, bool]:
+    """Move a message from Junk back into the Inbox (false-positive recovery)."""
+    _, provider = _account_provider(account_id)
+    try:
+        provider.move_message("junk", "inbox", message_id)
     except ProviderError as exc:
         provider.close()
         raise HTTPException(502, str(exc)) from exc

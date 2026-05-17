@@ -149,6 +149,30 @@ body {
 .pane-header h1 .muted { color: var(--text-dim); font-weight: 400; margin: 0 0.4rem; }
 .header-actions { display: flex; gap: 0.6rem; align-items: center; }
 
+/* Header search input */
+.search-input {
+  width: clamp(140px, 22vw, 260px);
+  padding: 0.4rem 0.7rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.search-input:focus { outline: none; border-color: var(--accent); }
+.search-q {
+  background: rgba(124, 155, 255, 0.10);
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-family: ui-monospace, "SFMono-Regular", monospace;
+}
+
+/* Draft editor styling matches the chosen-card preview */
+.draft-editor { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.8rem; }
+
 .syncing-pill {
   display: inline-flex;
   align-items: center;

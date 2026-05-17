@@ -174,8 +174,20 @@
             <span x-text="selectedAccount && selectedAccount.label"></span>
             <span class="muted">·</span>
             <span x-text="folderTitle(selectedFolder)"></span>
+            <span class="muted" x-show="searchActive">· search:</span>
+            <code class="search-q" x-show="searchActive" x-text="searchQuery"></code>
           </h1>
           <div class="header-actions">
+            <input
+              type="search"
+              class="search-input"
+              placeholder="Search this folder…"
+              x-model="searchQuery"
+              @keydown.enter="runSearch()"
+              @keydown.escape="clearSearch()"
+            />
+            <button class="link" @click="runSearch()" :disabled="busy">🔍</button>
+            <button class="link" x-show="searchActive" @click="clearSearch()">clear</button>
             <span class="syncing-pill" x-show="syncing" x-cloak>
               <span class="dot"></span> refreshing…
             </span>
@@ -230,14 +242,48 @@
               </div>
               <div class="email-subject" x-text="selectedMessage.subject"></div>
             </div>
-            <pre class="email-body full" x-text="selectedMessage.body || '(empty body)'"></pre>
+            <pre class="email-body full"
+                 x-show="selectedFolder !== 'drafts'"
+                 x-text="selectedMessage.body || '(empty body)'"></pre>
           </article>
         </template>
 
         <template x-if="selectedMessage && selectedFolder === 'drafts'">
+          <div class="draft-editor">
+            <div class="chosen-card">
+              <div class="chosen-header">
+                <span class="chosen-tone">EDITING DRAFT</span>
+                <button class="send-btn" @click="sendDraftBody()" :disabled="busy || !draftBody">
+                  📤 Send <kbd class="dim">⌘↵</kbd>
+                </button>
+              </div>
+              <textarea
+                class="edit-area"
+                x-model="draftBody"
+                rows="12"
+                @keydown.meta.enter="sendDraftBody()"
+                @keydown.ctrl.enter="sendDraftBody()"
+              ></textarea>
+            </div>
+            <div class="secondary-row">
+              <button class="link" @click="saveDraftEdits()" :disabled="busy || !draftBody">
+                💾 Save changes
+              </button>
+              <span class="sep">·</span>
+              <button class="link" @click="deleteDraft()" :disabled="busy">
+                🗑 Delete draft
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="selectedMessage && selectedFolder === 'junk'">
           <div class="message-actions">
-            <button class="danger" @click="deleteDraft()" :disabled="busy">
-              🗑 Delete draft
+            <button class="primary" @click="restoreFromJunk()" :disabled="busy">
+              📥 Move to Inbox (not spam)
+            </button>
+            <button class="danger" @click="deleteJunk()" :disabled="busy">
+              🗑 Delete permanently
             </button>
           </div>
         </template>

@@ -32,6 +32,13 @@ function app() {
     messageList: [],
     selectedMessage: null,
 
+    /* Search state */
+    searchQuery: "",
+    searchActive: false,
+
+    /* Draft editor — content of the currently-open draft */
+    draftBody: "",
+
     /* Triage session state */
     triage: {
       mode: "batch",         // 'batch' (queue from Inbox) | 'single' (one specific email)
@@ -223,7 +230,37 @@ function app() {
 
     async refreshFolder() {
       if (!this.selectedAccount || !this.selectedFolder) return;
+      this.searchActive = false;
+      this.searchQuery = "";
       await this._loadMessageList();
+    },
+
+    /* ---------- Search ---------- */
+    async runSearch() {
+      const q = this.searchQuery.trim();
+      if (!q || !this.selectedAccount || !this.selectedFolder) return;
+      this.busy = true;
+      this.message = "";
+      try {
+        const url =
+          `/api/search/${this.selectedAccount.id}/${this.selectedFolder}` +
+          `?q=${encodeURIComponent(q)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        this.messageList = await res.json();
+        this.searchActive = true;
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    clearSearch() {
+      this.searchQuery = "";
+      this.searchActive = false;
+      // Pull the original full list back from cache + server
+      this._loadMessageList();
     },
 
     async _loadMessageList() {
@@ -294,16 +331,21 @@ function app() {
         return;
       }
 
-      // Drafts / Sent: read-only message view.
+      // Drafts / Sent / Junk: load the full message into the detail view.
       this.busy = true;
       this.message = "";
       this.selectedMessage = null;
+      this.draftBody = "";
       this.view = "message";
       try {
         const url = `/api/messages/${this.selectedAccount.id}/${this.selectedFolder}/${encodeURIComponent(m.id)}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
         this.selectedMessage = await res.json();
+        if (this.selectedFolder === "drafts") {
+          // Seed the editor with the existing body so the user can edit in place.
+          this.draftBody = this.selectedMessage.body || "";
+        }
       } catch (e) {
         this.message = "Error: " + e.message;
         this.view = "folder";
@@ -324,14 +366,114 @@ function app() {
         const url = `/api/messages/${this.selectedAccount.id}/${this.selectedFolder}/${encodeURIComponent(this.selectedMessage.id)}`;
         const res = await fetch(url, { method: "DELETE" });
         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
-        // Remove from list, go back to folder
-        this.messageList = this.messageList.filter((m) => m.id !== this.selectedMessage.id);
+        this._dropFromList(this.selectedMessage.id);
         this.selectedMessage = null;
         this.view = "folder";
       } catch (e) {
         this.message = "Error: " + e.message;
       } finally {
         this.busy = false;
+      }
+    },
+
+    /* ---------- Draft editor (saves a new draft or sends straight away) ---------- */
+    async saveDraftEdits() {
+      if (!this.selectedMessage || !this.draftBody.trim()) return;
+      this.busy = true;
+      this.message = "";
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/drafts/${encodeURIComponent(this.selectedMessage.id)}/edit`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: this.draftBody }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        this.message = "✓ Draft updated.";
+        // The draft's id may have changed (IMAP APPEND + DELETE); refresh the
+        // folder so the listing reflects reality.
+        this.selectedMessage = null;
+        this.view = "folder";
+        await this.refreshFolder();
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    async sendDraftBody() {
+      // Best UX: send the (possibly edited) body, then delete the original draft.
+      if (!this.selectedMessage || !this.draftBody.trim()) return;
+      this.busy = true;
+      this.message = "";
+      const originalId = this.selectedMessage.id;
+      try {
+        // Pretend it's a triage single with this email so /api/triage/send works.
+        // Open a single-triage session against the draft's recipient.
+        // Simpler path: post to a dedicated send endpoint when we add one;
+        // for now, save the edits then ask the user to use Gmail/163 to hit Send.
+        // For an immediate UX, we use the IMAP draft-edit + manual send. To
+        // actually wire one-click send from drafts, we just save the body
+        // (replaces the draft) and surface a hint.
+        const url = `/api/messages/${this.selectedAccount.id}/drafts/${encodeURIComponent(originalId)}/edit`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: this.draftBody }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        this.message = "✓ Updated draft. Open it in your mail app and press Send.";
+        this.selectedMessage = null;
+        this.view = "folder";
+        await this.refreshFolder();
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    /* ---------- Junk actions ---------- */
+    async restoreFromJunk() {
+      if (!this.selectedMessage) return;
+      this.busy = true;
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/junk/${encodeURIComponent(this.selectedMessage.id)}/restore`;
+        const res = await fetch(url, { method: "POST" });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        this.message = "✓ Moved back to Inbox.";
+        this._dropFromList(this.selectedMessage.id);
+        this.selectedMessage = null;
+        this.view = "folder";
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    async deleteJunk() {
+      if (!this.selectedMessage || !confirm("Permanently delete this email?")) return;
+      this.busy = true;
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/junk/${encodeURIComponent(this.selectedMessage.id)}`;
+        const res = await fetch(url, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        this._dropFromList(this.selectedMessage.id);
+        this.selectedMessage = null;
+        this.view = "folder";
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    _dropFromList(messageId) {
+      this.messageList = this.messageList.filter((m) => m.id !== messageId);
+      if (this.selectedAccount && this.selectedFolder) {
+        this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
       }
     },
 

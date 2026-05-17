@@ -47,7 +47,16 @@ class MailProvider(Protocol):
 
     def move_message(self, from_kind: FolderKind, to_kind: FolderKind, message_id: str) -> None:
         """Move a message from one folder to another. Used by the spam classifier
-        to push detected-spam mail out of the inbox."""
+        to push detected-spam mail out of the inbox, and by the UI to restore
+        false positives from Junk back to Inbox."""
+
+    def search(self, kind: FolderKind, query: str, limit: int = 50) -> list[EmailMsg]:
+        """Full-text search within a folder. Returns message summaries (no body)."""
+
+    def update_draft(self, message_id: str, new_body: str) -> str:
+        """Replace a draft's body. Returns the new message id (IMAP can't update
+        in place — it's a delete + append). To/Subject are preserved from the
+        original."""
 
     def create_draft(self, email: EmailMsg, body: str) -> str:
         """Create a reply draft in the original thread/folder. Returns a stable id."""

@@ -14,12 +14,25 @@ from googleapiclient.discovery import build
 
 from imail.providers.base import EmailMsg, FolderKind, ProviderError
 
-# Read inbox + draft + modify labels. No "send" — drafts only by design.
+# Full mailbox access: read + draft + modify labels + send.
+# Note: adding `gmail.send` to an existing token requires re-consent.
+# When a stale token is loaded with the old scope set, refresh() raises and we
+# fall through to a fresh `flow.run_local_server()` that opens the browser
+# again — which is exactly the migration the user needs.
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/gmail.send",
 ]
+
+# Map our internal folder kinds onto Gmail system labels.
+GMAIL_LABEL = {
+    "inbox":  "INBOX",
+    "drafts": "DRAFT",
+    "sent":   "SENT",
+    "junk":   "SPAM",
+}
 
 
 class GmailProvider:
@@ -43,8 +56,14 @@ class GmailProvider:
             return creds
 
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except Exception:
+                # Token can't satisfy the new scope set → fall through to a
+                # fresh consent so the user re-grants with gmail.send included.
+                creds = None
+
+        if creds is None or not creds.valid:
             if not self._credentials_path.exists():
                 raise ProviderError(
                     f"Gmail OAuth client file not found at {self._credentials_path}. "
@@ -58,7 +77,7 @@ class GmailProvider:
         return creds
 
     # ------------------------------------------------------------------
-    # MailProvider surface
+    # MailProvider surface — discovery + reading
     # ------------------------------------------------------------------
     def fetch_unread(self, limit: int = 20) -> list[EmailMsg]:
         resp = (
@@ -69,15 +88,64 @@ class GmailProvider:
         )
         return [self._get_message(m["id"]) for m in resp.get("messages", [])]
 
-    def create_draft(self, email: EmailMsg, body: str) -> str:
-        reply = EmailMessage()
-        reply.set_content(body)
-        reply["To"] = email.sender
-        reply["Subject"] = self._reply_subject(email.subject)
-        reply["In-Reply-To"] = email.id
-        reply["References"] = email.id
+    def list_folder(self, kind: FolderKind, limit: int = 50) -> list[EmailMsg]:
+        label = GMAIL_LABEL.get(kind)
+        if label is None:
+            raise ProviderError(f"Unknown folder kind {kind!r}")
+        # Drafts are exposed via a different endpoint and don't carry a real
+        # message id until they're sent — handle separately.
+        if kind == "drafts":
+            return self._list_drafts(limit)
+        resp = (
+            self._service.users()
+            .messages()
+            .list(userId="me", labelIds=[label], maxResults=limit)
+            .execute()
+        )
+        return [self._get_message_summary(m["id"], unread_label=(kind == "inbox"))
+                for m in resp.get("messages", [])]
 
-        raw = base64.urlsafe_b64encode(reply.as_bytes()).decode()
+    def fetch_message(self, kind: FolderKind, message_id: str) -> EmailMsg:
+        if kind == "drafts":
+            draft = self._service.users().drafts().get(userId="me", id=message_id, format="full").execute()
+            return self._parse_full_message(draft["message"])
+        return self._get_message(message_id)
+
+    def delete_message(self, kind: FolderKind, message_id: str) -> None:
+        if kind == "drafts":
+            self._service.users().drafts().delete(userId="me", id=message_id).execute()
+            return
+        # For non-draft messages, send to trash. Permanent delete requires the
+        # gmail.modify scope (we have it) plus messages.delete which is destructive.
+        self._service.users().messages().trash(userId="me", id=message_id).execute()
+
+    def move_message(self, from_kind: FolderKind, to_kind: FolderKind, message_id: str) -> None:
+        src = GMAIL_LABEL[from_kind]
+        dst = GMAIL_LABEL[to_kind]
+        self._service.users().messages().modify(
+            userId="me",
+            id=message_id,
+            body={"addLabelIds": [dst], "removeLabelIds": [src]},
+        ).execute()
+
+    def search(self, kind: FolderKind, query: str, limit: int = 50) -> list[EmailMsg]:
+        label = GMAIL_LABEL.get(kind)
+        if label is None or not query.strip():
+            return []
+        gmail_query = f"label:{label.lower()} {query}"
+        resp = (
+            self._service.users()
+            .messages()
+            .list(userId="me", q=gmail_query, maxResults=limit)
+            .execute()
+        )
+        return [self._get_message_summary(m["id"]) for m in resp.get("messages", [])]
+
+    # ------------------------------------------------------------------
+    # MailProvider surface — drafts + send
+    # ------------------------------------------------------------------
+    def create_draft(self, email: EmailMsg, body: str) -> str:
+        raw = _build_reply_raw(email, body, sign_as=None)
         draft = (
             self._service.users()
             .drafts()
@@ -89,30 +157,33 @@ class GmailProvider:
         )
         return str(draft["id"])
 
+    def update_draft(self, message_id: str, new_body: str) -> str:
+        # Gmail supports in-place draft updates — much cleaner than IMAP.
+        original = self.fetch_message("drafts", message_id)
+        raw = _build_reply_raw(
+            EmailMsg(
+                id=original.id, thread_id=original.thread_id,
+                sender=original.sender, subject=original.subject,
+                snippet="", body="",
+            ),
+            new_body,
+            sign_as=None,
+            reuse_recipient=True,
+        )
+        updated = (
+            self._service.users()
+            .drafts()
+            .update(userId="me", id=message_id, body={"message": {"raw": raw}})
+            .execute()
+        )
+        return str(updated["id"])
+
     def send(self, email: EmailMsg, body: str) -> None:
-        # Sending would require requesting an extra OAuth scope (gmail.send) on top
-        # of the read/draft/modify set this provider asks for. Until we add that
-        # explicit re-consent flow, surface a friendly error to the UI.
-        raise ProviderError(
-            "Gmail send isn't wired up yet — it needs an extra gmail.send OAuth scope "
-            "and a re-authorization. For now use 'Save as draft' and press Send from "
-            "the Gmail web UI."
-        )
-
-    def list_folder(self, kind: FolderKind, limit: int = 50) -> list[EmailMsg]:
-        raise ProviderError(
-            "Gmail folder browsing isn't wired up yet — use the Inbox triage flow "
-            "or browse in the Gmail web UI."
-        )
-
-    def fetch_message(self, kind: FolderKind, message_id: str) -> EmailMsg:
-        raise ProviderError("Gmail message fetch by id isn't wired up yet.")
-
-    def delete_message(self, kind: FolderKind, message_id: str) -> None:
-        raise ProviderError("Gmail message delete isn't wired up yet.")
-
-    def move_message(self, from_kind: FolderKind, to_kind: FolderKind, message_id: str) -> None:
-        raise ProviderError("Gmail message move isn't wired up yet.")
+        raw = _build_reply_raw(email, body, sign_as=None)
+        self._service.users().messages().send(
+            userId="me",
+            body={"raw": raw, "threadId": email.thread_id},
+        ).execute()
 
     def mark_read(self, email: EmailMsg) -> None:
         self._service.users().messages().modify(
@@ -133,6 +204,30 @@ class GmailProvider:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _list_drafts(self, limit: int) -> list[EmailMsg]:
+        resp = self._service.users().drafts().list(userId="me", maxResults=limit).execute()
+        out: list[EmailMsg] = []
+        for d in resp.get("drafts", []) or []:
+            try:
+                detail = self._service.users().drafts().get(userId="me", id=d["id"], format="metadata").execute()
+                msg = detail.get("message", {})
+                headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                out.append(
+                    EmailMsg(
+                        id=d["id"],          # draft id, not message id
+                        thread_id=msg.get("threadId", d["id"]),
+                        sender=headers.get("to", self._whoami()),
+                        subject=headers.get("subject", "(no subject)"),
+                        snippet=msg.get("snippet", ""),
+                        body="",
+                        date=headers.get("date", ""),
+                        unread=False,
+                    )
+                )
+            except Exception:
+                continue
+        return out
+
     def _get_message(self, message_id: str) -> EmailMsg:
         msg = (
             self._service.users()
@@ -140,20 +235,78 @@ class GmailProvider:
             .get(userId="me", id=message_id, format="full")
             .execute()
         )
-        headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
-        body = _extract_plain_body(msg["payload"])
+        return self._parse_full_message(msg)
+
+    def _get_message_summary(self, message_id: str, unread_label: bool = False) -> EmailMsg:
+        msg = (
+            self._service.users()
+            .messages()
+            .get(userId="me", id=message_id, format="metadata")
+            .execute()
+        )
+        headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
+        is_unread = "UNREAD" in (msg.get("labelIds") or []) if unread_label else False
         return EmailMsg(
             id=msg["id"],
-            thread_id=msg["threadId"],
+            thread_id=msg.get("threadId", msg["id"]),
+            sender=headers.get("from", "(unknown)"),
+            subject=headers.get("subject", "(no subject)"),
+            snippet=msg.get("snippet", ""),
+            body="",
+            date=headers.get("date", ""),
+            unread=is_unread,
+        )
+
+    def _parse_full_message(self, msg: dict[str, Any]) -> EmailMsg:
+        headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
+        body = _extract_plain_body(msg.get("payload", {}))
+        return EmailMsg(
+            id=msg["id"],
+            thread_id=msg.get("threadId", msg["id"]),
             sender=headers.get("from", "(unknown)"),
             subject=headers.get("subject", "(no subject)"),
             snippet=msg.get("snippet", ""),
             body=body,
+            date=headers.get("date", ""),
+            unread="UNREAD" in (msg.get("labelIds") or []),
         )
+
+    def _whoami(self) -> str:
+        profile = self._service.users().getProfile(userId="me").execute()
+        return str(profile.get("emailAddress", ""))
 
     @staticmethod
     def _reply_subject(original: str) -> str:
         return original if original.lower().startswith("re:") else f"Re: {original}"
+
+
+# ----------------------------------------------------------------------
+# Module-level helpers (pure-ish)
+# ----------------------------------------------------------------------
+def _build_reply_raw(
+    email: EmailMsg,
+    body: str,
+    sign_as: str | None = None,
+    reuse_recipient: bool = False,
+) -> str:
+    """Build a base64url-encoded RFC822 reply for Gmail's raw-message endpoints.
+
+    `reuse_recipient` is a marker for the update-draft path where the EmailMsg
+    we constructed already holds the To: address (rather than a From: address);
+    we keep it for clarity even though both branches use the same field today.
+    """
+    _ = reuse_recipient  # signature kept stable for callers
+    reply = EmailMessage()
+    reply.set_content(body)
+    reply["To"] = email.sender
+    if sign_as:
+        reply["From"] = sign_as
+    reply["Subject"] = (
+        email.subject if email.subject.lower().startswith("re:") else f"Re: {email.subject}"
+    )
+    reply["In-Reply-To"] = email.id
+    reply["References"] = email.id
+    return base64.urlsafe_b64encode(reply.as_bytes()).decode()
 
 
 def _extract_plain_body(payload: dict[str, Any]) -> str:
