@@ -476,6 +476,7 @@ class ImapProvider:
 
         subject = _decode_header_safe(msg.get("Subject", "(no subject)"))
         sender = _decode_header_safe(msg.get("From", "(unknown)"))
+        date = msg.get("Date", "")
         body = _extract_plain_body(msg)
         snippet = (body[:200] + " …") if len(body) > 200 else body
 
@@ -486,6 +487,7 @@ class ImapProvider:
             subject=subject,
             snippet=snippet,
             body=body,
+            date=date,
         )
 
     @staticmethod

@@ -238,7 +238,7 @@
               </div>
               <div class="email-from">
                 <span class="muted">Date</span>
-                <span x-text="selectedMessage.date"></span>
+                <span x-text="longDate(selectedMessage.date)"></span>
               </div>
               <div class="email-subject" x-text="selectedMessage.subject"></div>
             </div>
@@ -321,6 +321,7 @@
                 <div class="email-from">
                   <span class="muted">From</span>
                   <strong x-text="triage.current.email.sender"></strong>
+                  <span class="email-date" x-text="longDate(triage.current.email.date)"></span>
                 </div>
                 <div class="email-subject" x-text="triage.current.email.subject"></div>
               </div>

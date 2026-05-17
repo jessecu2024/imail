@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Literal
 
@@ -37,7 +38,7 @@ logger = logging.getLogger("imail.server")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="imail", version="1.1.0")
+app = FastAPI(title="imail", version="1.1.1")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -79,6 +80,57 @@ class _Session:
 
 
 _session: _Session | None = None
+
+
+# ----------------------------------------------------------------------
+# Per-account IMAP connection pool.
+# Logging into IMAP (especially 163) takes 1-2 seconds — paying that on every
+# folder/message click makes the UI feel sluggish. By keeping ONE long-lived
+# provider per account, the second-onwards click is instant. Concurrent use of
+# a single imaplib connection is unsafe, so each account gets its own lock and
+# routes hold the lock for the duration of an operation. Background tasks
+# (prefetch, polling) still get their own dedicated providers — they shouldn't
+# steal the lock and starve the user's click.
+# ----------------------------------------------------------------------
+_provider_pool: dict[str, MailProvider] = {}
+_provider_locks: dict[str, threading.Lock] = {}
+_pool_meta_lock = threading.Lock()
+
+
+def _pool_acquire(account_id: str) -> tuple[MailProvider, threading.Lock]:
+    """Return (provider, lock) for the account, creating both lazily."""
+    with _pool_meta_lock:
+        lock = _provider_locks.setdefault(account_id, threading.Lock())
+        provider = _provider_pool.get(account_id)
+        if provider is None:
+            store = AccountStore.load()
+            account = store.get(account_id)
+            if account is None:
+                raise HTTPException(404, "Account not found.")
+            try:
+                provider = open_provider(account)
+            except ProviderError as exc:
+                raise HTTPException(502, str(exc)) from exc
+            _provider_pool[account_id] = provider
+        return provider, lock
+
+
+def _pool_evict(account_id: str) -> None:
+    with _pool_meta_lock:
+        p = _provider_pool.pop(account_id, None)
+        _provider_locks.pop(account_id, None)
+    if p:
+        with contextlib.suppress(Exception):
+            p.close()
+
+
+@contextlib.contextmanager
+def use_provider(account_id: str) -> Iterator[MailProvider]:
+    """Borrow the pooled provider for one operation. Holds the per-account
+    lock so two concurrent requests can't trample imaplib state."""
+    provider, lock = _pool_acquire(account_id)
+    with lock:
+        yield provider
 
 
 # ----------------------------------------------------------------------
@@ -321,6 +373,7 @@ def delete_account(account_id: str) -> dict[str, bool]:
     if store.get(account_id) is None:
         raise HTTPException(404, "Account not found.")
     store.remove(account_id)
+    _pool_evict(account_id)
     return {"ok": True}
 
 
@@ -333,13 +386,11 @@ def list_folder(
     kind: Literal["inbox", "drafts", "sent", "junk"],
     background_tasks: BackgroundTasks,
 ) -> list[MessageSummary]:
-    _, provider = _account_provider(account_id)
     try:
-        msgs = provider.list_folder(kind, limit=50)
+        with use_provider(account_id) as provider:
+            msgs = provider.list_folder(kind, limit=50)
     except ProviderError as exc:
-        provider.close()
         raise HTTPException(502, str(exc)) from exc
-    provider.close()
 
     # Fire-and-forget: pre-generate replies for the inbox so the user gets an
     # instant response when they click any email. Drafts/Sent don't need this.
@@ -364,13 +415,11 @@ def get_message(
     kind: Literal["inbox", "drafts", "sent", "junk"],
     message_id: str,
 ) -> MessageDetail:
-    _, provider = _account_provider(account_id)
     try:
-        msg = provider.fetch_message(kind, message_id)
+        with use_provider(account_id) as provider:
+            msg = provider.fetch_message(kind, message_id)
     except ProviderError as exc:
-        provider.close()
         raise HTTPException(502, str(exc)) from exc
-    provider.close()
     return MessageDetail(
         id=msg.id,
         sender=msg.sender,
@@ -386,13 +435,11 @@ def delete_message(
     kind: Literal["inbox", "drafts", "sent", "junk"],
     message_id: str,
 ) -> dict[str, bool]:
-    _, provider = _account_provider(account_id)
     try:
-        provider.delete_message(kind, message_id)
+        with use_provider(account_id) as provider:
+            provider.delete_message(kind, message_id)
     except ProviderError as exc:
-        provider.close()
         raise HTTPException(502, str(exc)) from exc
-    provider.close()
     return {"ok": True}
 
 
@@ -405,13 +452,11 @@ def search_folder(
     kind: Literal["inbox", "drafts", "sent", "junk"],
     q: str = "",
 ) -> list[MessageSummary]:
-    _, provider = _account_provider(account_id)
     try:
-        msgs = provider.search(kind, q, limit=50)
+        with use_provider(account_id) as provider:
+            msgs = provider.search(kind, q, limit=50)
     except ProviderError as exc:
-        provider.close()
         raise HTTPException(502, str(exc)) from exc
-    provider.close()
     return [
         MessageSummary(
             id=m.id,
@@ -431,26 +476,22 @@ class EditDraftRequest(BaseModel):
 @app.post("/api/messages/{account_id}/drafts/{message_id}/edit")
 def edit_draft(account_id: str, message_id: str, req: EditDraftRequest) -> dict[str, str]:
     """Replace a draft's body. Returns the new draft id."""
-    _, provider = _account_provider(account_id)
     try:
-        new_id = provider.update_draft(message_id, req.body)
+        with use_provider(account_id) as provider:
+            new_id = provider.update_draft(message_id, req.body)
     except ProviderError as exc:
-        provider.close()
         raise HTTPException(502, str(exc)) from exc
-    provider.close()
     return {"draft_id": new_id}
 
 
 @app.post("/api/messages/{account_id}/junk/{message_id}/restore")
 def restore_from_junk(account_id: str, message_id: str) -> dict[str, bool]:
     """Move a message from Junk back into the Inbox (false-positive recovery)."""
-    _, provider = _account_provider(account_id)
     try:
-        provider.move_message("junk", "inbox", message_id)
+        with use_provider(account_id) as provider:
+            provider.move_message("junk", "inbox", message_id)
     except ProviderError as exc:
-        provider.close()
         raise HTTPException(502, str(exc)) from exc
-    provider.close()
     return {"ok": True}
 
 
@@ -516,6 +557,7 @@ def triage_next() -> TriageNextResponse:
             "sender": email_msg.sender,
             "subject": email_msg.subject,
             "body": email_msg.body or email_msg.snippet,
+            "date": email_msg.date,
         },
         replies=replies,
     )
@@ -629,6 +671,7 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
             "sender": email_msg.sender,
             "subject": email_msg.subject,
             "body": email_msg.body or email_msg.snippet,
+            "date": email_msg.date,
         },
         replies=replies,
     )

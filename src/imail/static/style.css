@@ -452,6 +452,7 @@ input:focus { outline: none; border-color: var(--accent); }
 .email-header { margin-bottom: 0.8rem; }
 .email-from { color: var(--text-soft); font-size: 0.8rem; margin-bottom: 0.3rem; }
 .email-from strong { color: var(--text); margin-left: 0.4rem; font-weight: 500; }
+.email-date { color: var(--text-dim); margin-left: 0.6rem; font-size: 0.82rem; }
 .email-subject { font-size: 1.15rem; font-weight: 600; letter-spacing: -0.005em; }
 .email-body {
   margin: 0;

@@ -207,6 +207,27 @@ function app() {
         : d.toLocaleDateString();
     },
 
+    longDate(raw) {
+      // Used by the triage and message-detail headers — friendlier than the
+      // raw RFC822 string (e.g. "Sat, 17 May 2026 12:34 PM" instead of
+      // "Sat, 17 May 2026 04:34:56 +0000").
+      if (!raw) return "";
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) return raw;
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const yest = new Date(now); yest.setDate(now.getDate() - 1);
+      const isYesterday = d.toDateString() === yest.toDateString();
+      const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      if (sameDay)      return `Today · ${time}`;
+      if (isYesterday)  return `Yesterday · ${time}`;
+      const sameYear = d.getFullYear() === now.getFullYear();
+      const datePart = d.toLocaleDateString([], sameYear
+        ? { month: "short", day: "numeric" }
+        : { year: "numeric", month: "short", day: "numeric" });
+      return `${datePart} · ${time}`;
+    },
+
     async openFolder(acct, kind) {
       this.selectedAccount = acct;
       this.selectedFolder = kind;
