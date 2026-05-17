@@ -28,10 +28,10 @@ SCOPES = [
 
 # Map our internal folder kinds onto Gmail system labels.
 GMAIL_LABEL = {
-    "inbox":  "INBOX",
+    "inbox": "INBOX",
     "drafts": "DRAFT",
-    "sent":   "SENT",
-    "junk":   "SPAM",
+    "sent": "SENT",
+    "junk": "SPAM",
 }
 
 
@@ -102,12 +102,19 @@ class GmailProvider:
             .list(userId="me", labelIds=[label], maxResults=limit)
             .execute()
         )
-        return [self._get_message_summary(m["id"], unread_label=(kind == "inbox"))
-                for m in resp.get("messages", [])]
+        return [
+            self._get_message_summary(m["id"], unread_label=(kind == "inbox"))
+            for m in resp.get("messages", [])
+        ]
 
     def fetch_message(self, kind: FolderKind, message_id: str) -> EmailMsg:
         if kind == "drafts":
-            draft = self._service.users().drafts().get(userId="me", id=message_id, format="full").execute()
+            draft = (
+                self._service.users()
+                .drafts()
+                .get(userId="me", id=message_id, format="full")
+                .execute()
+            )
             return self._parse_full_message(draft["message"])
         return self._get_message(message_id)
 
@@ -162,9 +169,12 @@ class GmailProvider:
         original = self.fetch_message("drafts", message_id)
         raw = _build_reply_raw(
             EmailMsg(
-                id=original.id, thread_id=original.thread_id,
-                sender=original.sender, subject=original.subject,
-                snippet="", body="",
+                id=original.id,
+                thread_id=original.thread_id,
+                sender=original.sender,
+                subject=original.subject,
+                snippet="",
+                body="",
             ),
             new_body,
             sign_as=None,
@@ -209,12 +219,19 @@ class GmailProvider:
         out: list[EmailMsg] = []
         for d in resp.get("drafts", []) or []:
             try:
-                detail = self._service.users().drafts().get(userId="me", id=d["id"], format="metadata").execute()
+                detail = (
+                    self._service.users()
+                    .drafts()
+                    .get(userId="me", id=d["id"], format="metadata")
+                    .execute()
+                )
                 msg = detail.get("message", {})
-                headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                headers = {
+                    h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])
+                }
                 out.append(
                     EmailMsg(
-                        id=d["id"],          # draft id, not message id
+                        id=d["id"],  # draft id, not message id
                         thread_id=msg.get("threadId", d["id"]),
                         sender=headers.get("to", self._whoami()),
                         subject=headers.get("subject", "(no subject)"),

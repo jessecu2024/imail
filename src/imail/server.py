@@ -414,7 +414,11 @@ def search_folder(
     provider.close()
     return [
         MessageSummary(
-            id=m.id, sender=m.sender, subject=m.subject, date=m.date, unread=m.unread,
+            id=m.id,
+            sender=m.sender,
+            subject=m.subject,
+            date=m.date,
+            unread=m.unread,
         )
         for m in msgs
     ]
