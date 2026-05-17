@@ -50,11 +50,17 @@ First run will show an "Add account" screen. Pick a provider:
 
 - **Gmail** — drop your `credentials.json` (see [docs/gmail-setup.md](docs/gmail-setup.md))
   and the first triage triggers the OAuth consent screen.
-- **Outlook / 163 / 126 / QQ / Yahoo / iCloud** — sign in with your email + an
-  **app password / 授权码** (see [docs/imap-setup.md](docs/imap-setup.md)).
+- **Microsoft 365 / Outlook / 163 / 126 / QQ / Yahoo / iCloud** — sign in with your
+  email + an **app password / 授权码** (see [docs/imap-setup.md](docs/imap-setup.md)).
 - **Custom** — enter any IMAPS host + port.
 
 After that, click your mailbox card → walk through unread emails → press 1/2/3 → drafts land in your Drafts folder.
+
+> **Work or school account that blocks IMAP and won't let you register an Azure app?**
+> (CityU and many other universities.) See
+> [docs/forwarding-workflow.md](docs/forwarding-workflow.md) for the validated
+> forwarding-to-personal fallback — adds your work mail to imail in 5 minutes
+> of server-side setup, no code needed.
 
 ## Configuration
 
