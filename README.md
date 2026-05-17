@@ -62,6 +62,12 @@ After that, click your mailbox card → walk through unread emails → press 1/2
 > forwarding-to-personal fallback — adds your work mail to imail in 5 minutes
 > of server-side setup, no code needed.
 
+> **Where this project is heading + what would unblock more mailboxes:**
+> [docs/vision-and-paths.md](docs/vision-and-paths.md) — the project's big
+> picture, current capability matrix, and a ranked list of compromise paths
+> (browser extension, bookmarklet, menu-bar app, Outlook add-in, etc.) for
+> when direct API access is blocked.
+
 ## Configuration
 
 All settings come from `.env` (see `.env.example`):
