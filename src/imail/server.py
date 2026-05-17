@@ -38,7 +38,7 @@ logger = logging.getLogger("imail.server")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="imail", version="1.1.2")
+app = FastAPI(title="imail", version="1.1.3")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -142,6 +142,27 @@ def use_provider(account_id: str) -> Iterator[MailProvider]:
 _inbox_cache: dict[str, tuple[EmailMsg, ReplyTrio]] = {}
 _inbox_cache_lock = threading.Lock()
 
+# A leaner cache for non-inbox folders (Sent / Drafts / Junk). We only need the
+# full message body, no LLM replies — the user is just reading. Keyed by
+# "{account_id}:{kind}:{message_id}".
+_body_cache: dict[str, EmailMsg] = {}
+_body_cache_lock = threading.Lock()
+
+
+def _body_get(account_id: str, kind: str, message_id: str) -> EmailMsg | None:
+    with _body_cache_lock:
+        return _body_cache.get(f"{account_id}:{kind}:{message_id}")
+
+
+def _body_put(account_id: str, kind: str, message_id: str, msg: EmailMsg) -> None:
+    with _body_cache_lock:
+        _body_cache[f"{account_id}:{kind}:{message_id}"] = msg
+
+
+def _body_drop(account_id: str, kind: str, message_id: str) -> None:
+    with _body_cache_lock:
+        _body_cache.pop(f"{account_id}:{kind}:{message_id}", None)
+
 
 def _cache_get(account_id: str, message_id: str) -> tuple[EmailMsg, ReplyTrio] | None:
     with _inbox_cache_lock:
@@ -219,6 +240,46 @@ def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
                     logger.info("Prefetched replies for %s/%s", account_id, mid)
             except Exception as exc:
                 logger.warning("Prefetch failed for %s/%s: %s", account_id, mid, exc)
+    finally:
+        with contextlib.suppress(Exception):
+            provider.close()
+
+
+def _warm_folder_bodies(account_id: str, kind: str, message_ids: list[str]) -> None:
+    """Background task: cache full bodies for a non-inbox folder so the first
+    click is instant. No DeepSeek call — these messages don't need replies
+    drafted (Sent and Junk are read-only; Drafts open into the editor).
+
+    Limits to the first 10 messages — fetching all 50 of Sent at startup is
+    expensive on IMAP and the user almost always opens the newest ones first.
+    """
+    if not message_ids:
+        return
+    store = AccountStore.load()
+    account = store.get(account_id)
+    if account is None:
+        return
+
+    missing = [mid for mid in message_ids[:10] if _body_get(account_id, kind, mid) is None]
+    if not missing:
+        return
+
+    try:
+        provider = open_provider(account)
+    except ProviderError as exc:
+        logger.warning("Body prefetch: open_provider failed for %s: %s", account_id, exc)
+        return
+
+    try:
+        for mid in missing:
+            if _body_get(account_id, kind, mid) is not None:
+                continue
+            try:
+                msg = provider.fetch_message(kind, mid)  # type: ignore[arg-type]
+                _body_put(account_id, kind, mid, msg)
+                logger.info("Prefetched body for %s/%s/%s", account_id, kind, mid)
+            except Exception as exc:
+                logger.warning("Body prefetch failed for %s/%s/%s: %s", account_id, kind, mid, exc)
     finally:
         with contextlib.suppress(Exception):
             provider.close()
@@ -392,10 +453,16 @@ def list_folder(
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
 
-    # Fire-and-forget: pre-generate replies for the inbox so the user gets an
-    # instant response when they click any email. Drafts/Sent don't need this.
-    if kind == "inbox" and msgs:
-        background_tasks.add_task(_warm_inbox_cache, account_id, [m.id for m in msgs])
+    # Fire-and-forget warm-up:
+    #   - Inbox: full triage prefetch (body + 3 DeepSeek replies + spam-move)
+    #   - Sent / Drafts / Junk: just cache bodies for the top N so the first
+    #     click is instant.
+    if msgs:
+        ids = [m.id for m in msgs]
+        if kind == "inbox":
+            background_tasks.add_task(_warm_inbox_cache, account_id, ids)
+        else:
+            background_tasks.add_task(_warm_folder_bodies, account_id, kind, ids)
 
     return [
         MessageSummary(
@@ -415,11 +482,28 @@ def get_message(
     kind: Literal["inbox", "drafts", "sent", "junk"],
     message_id: str,
 ) -> MessageDetail:
+    # Cache check first — the background warmup on list_folder usually has
+    # already pulled the body for the top messages.
+    cached = _body_get(account_id, kind, message_id)
+    if cached is not None:
+        logger.info("Body cache HIT for %s/%s/%s", account_id, kind, message_id)
+        return MessageDetail(
+            id=cached.id,
+            sender=cached.sender,
+            subject=cached.subject,
+            body=cached.body,
+            date=cached.date,
+        )
+
     try:
         with use_provider(account_id) as provider:
             msg = provider.fetch_message(kind, message_id)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
+
+    # Stash for next time so re-opening the same message is instant.
+    _body_put(account_id, kind, message_id, msg)
+
     return MessageDetail(
         id=msg.id,
         sender=msg.sender,
@@ -440,6 +524,7 @@ def delete_message(
             provider.delete_message(kind, message_id)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
+    _body_drop(account_id, kind, message_id)
     return {"ok": True}
 
 
@@ -481,6 +566,7 @@ def edit_draft(account_id: str, message_id: str, req: EditDraftRequest) -> dict[
             new_id = provider.update_draft(message_id, req.body)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
+    _body_drop(account_id, "drafts", message_id)
     return {"draft_id": new_id}
 
 
@@ -492,6 +578,7 @@ def restore_from_junk(account_id: str, message_id: str) -> dict[str, bool]:
             provider.move_message("junk", "inbox", message_id)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
+    _body_drop(account_id, "junk", message_id)
     return {"ok": True}
 
 
