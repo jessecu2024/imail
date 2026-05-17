@@ -12,15 +12,14 @@ from __future__ import annotations
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 from imail.config import load_settings
 from imail.providers.base import EmailMsg
 from imail.reply_generator import ReplyGenerator, extract_first_name
 
 CASES: list[EmailMsg] = [
     EmailMsg(
-        id="1", thread_id="1",
+        id="1",
+        thread_id="1",
         sender="Alex Wang <alex.wang@example.com>",
         subject="Coffee next week?",
         snippet="",
@@ -30,14 +29,16 @@ CASES: list[EmailMsg] = [
         ),
     ),
     EmailMsg(
-        id="2", thread_id="2",
+        id="2",
+        thread_id="2",
         sender='"Wang, Alex" <alex@x.com>',
         subject="Reschedule meeting",
         snippet="",
         body="Could we move tomorrow's 10am meeting to Thursday at 2pm?",
     ),
     EmailMsg(
-        id="3", thread_id="3",
+        id="3",
+        thread_id="3",
         sender="xujie.cs@cityu.edu.hk",
         subject="Paper review request",
         snippet="",
@@ -47,7 +48,8 @@ CASES: list[EmailMsg] = [
         ),
     ),
     EmailMsg(
-        id="4", thread_id="4",
+        id="4",
+        thread_id="4",
         sender="张老师 <zhang@university.cn>",
         subject="开会安排",
         snippet="",
@@ -57,8 +59,11 @@ CASES: list[EmailMsg] = [
 
 
 def main() -> None:
+    load_dotenv()
     s = load_settings()
-    print(f"USER_SIGNOFF = {s.user_signoff!r}   (closing will be: 'Best regards,\\n{s.user_signoff}')")
+    print(
+        f"USER_SIGNOFF = {s.user_signoff!r}   (closing will be: 'Best regards,\\n{s.user_signoff}')"
+    )
     print(f"model        = {s.model}\n")
 
     g = ReplyGenerator(
@@ -78,12 +83,18 @@ def main() -> None:
 
         trio = g.generate(email)
 
-        for label, text in (("POSITIVE", trio.positive), ("NEUTRAL", trio.neutral), ("NEGATIVE", trio.negative)):
+        for label, text in (
+            ("POSITIVE", trio.positive),
+            ("NEUTRAL", trio.neutral),
+            ("NEGATIVE", trio.negative),
+        ):
             print(f"\n--- {label} ---")
             print(text)
             print(f"  ✓ opens with 'Dear': {text.startswith('Dear')}")
             closing = f"Best regards,\n{s.user_signoff}"
-            print(f"  ✓ closes with 'Best regards,\\n{s.user_signoff}': {text.rstrip().endswith(closing)}")
+            print(
+                f"  ✓ closes with 'Best regards,\\n{s.user_signoff}': {text.rstrip().endswith(closing)}"
+            )
         print()
 
 
