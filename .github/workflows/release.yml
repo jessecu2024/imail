@@ -21,7 +21,7 @@ jobs:
       # On pypi.org → manage project → publishing → add a "trusted publisher"
       # with this exact environment name + owner/repo/workflow filename.
       name: pypi
-      url: https://pypi.org/p/imail
+      url: https://pypi.org/p/imail-cli
     steps:
       - uses: actions/checkout@v4
         with:

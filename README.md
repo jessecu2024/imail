@@ -4,6 +4,13 @@
 
 <h1 align="center">imail</h1>
 
+<p align="center">
+  <a href="https://pypi.org/project/imail-cli/"><img alt="PyPI" src="https://img.shields.io/pypi/v/imail-cli.svg"></a>
+  <a href="https://pypi.org/project/imail-cli/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/imail-cli.svg"></a>
+  <a href="https://github.com/jessecu2024/imail/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://github.com/jessecu2024/imail/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jessecu2024/imail/actions/workflows/ci.yml/badge.svg"></a>
+</p>
+
 > Inbox triage as a local app. Log in once to Gmail, Outlook, or 163 — then clear your unread
 > emails by picking from three LLM-drafted replies per message. Powered by DeepSeek.
 
@@ -41,19 +48,29 @@ and saves your pick as a Gmail/IMAP draft. You stay in control of every Send but
 
 ```bash
 # Recommended: uv (fastest, no extra setup if you already have it).
-uv tool install imail
+uv tool install imail-cli
 
 # Or pipx (if you don't have uv).
-pipx install imail
+pipx install imail-cli
 ```
 
-Then put a DeepSeek API key into your `.env` (or export `DEEPSEEK_API_KEY`)
-and run `imail` — the browser opens to `http://127.0.0.1:8765`.
+> Note: distribution name on PyPI is **`imail-cli`** (the bare `imail` slot
+> was taken). The command you run after install is still **`imail`**.
+
+Then export your DeepSeek API key and launch:
+
+```bash
+export DEEPSEEK_API_KEY=sk-...      # get one at https://platform.deepseek.com/api_keys
+imail                                # opens http://127.0.0.1:8765
+```
+
+First run shows an "Add account" screen. Pick Gmail / Outlook / 163 / etc.,
+sign in, and you're triaging.
 
 **Try without installing** (uv only):
 
 ```bash
-uvx --from imail imail
+uvx --from imail-cli imail
 ```
 
 > Releases are also attached as `.whl` and `.tar.gz` on

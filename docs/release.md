@@ -17,7 +17,7 @@ instead of carrying a long-lived API token.
 
    | Field          | Value                          |
    |----------------|--------------------------------|
-   | PyPI project   | `imail`                        |
+   | PyPI project   | `imail-cli`                    |
    | Owner          | `jessecu2024`                  |
    | Repository     | `imail`                        |
    | Workflow       | `release.yml`                  |
@@ -27,11 +27,14 @@ instead of carrying a long-lived API token.
    "pending" publisher converts to a regular one. Subsequent releases need
    no further PyPI-side action.
 
-If PyPI rejects the name `imail` as already taken, fall back to
-`imail-cli` (update `pyproject.toml [project] name` and the `url:` in
-release.yml — environment URL would become `https://pypi.org/p/imail-cli`).
-The CLI entry point and the import name `imail` can stay regardless of the
-distribution name.
+Note: the distribution name on PyPI is `imail-cli` (the bare `imail` slot
+was already taken), but the import name is still `imail` and the CLI is
+still invoked as `imail` after install. End users see:
+
+```bash
+uv tool install imail-cli   # install
+imail                       # run
+```
 
 ## Cutting a release
 
@@ -57,13 +60,13 @@ distribution name.
    - build the wheel + sdist
    - upload them to PyPI
    - create a GitHub release with auto-generated notes + the artefacts.
-5. Verify: `pipx install imail==1.3.0` on a clean machine, run `imail`.
+5. Verify: `pipx install imail-cli==1.3.0` on a clean machine, run `imail`.
 
 ## What gets shipped
 
 The hatchling build pulls in the entire `src/imail/` tree, including the
 `static/` assets (icon, wordmark, CSS, JS, HTML). End users get a single
-`pip install imail` and the bundled web UI runs out of the box. The
+`pip install imail-cli` and the bundled web UI runs out of the box. The
 `uv.lock` file is **not** shipped — runtime resolution is governed by
 `pyproject.toml` deps so users can pick up newer transitive patch
 versions.
