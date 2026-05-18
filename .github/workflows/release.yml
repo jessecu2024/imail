@@ -1,0 +1,61 @@
+name: Release to PyPI
+
+on:
+  # Push a tag like v1.3.0 to trigger publish.
+  push:
+    tags:
+      - "v*"
+  # Allow re-running manually from the Actions tab if the tag-trigger run
+  # failed and the tag is already in place.
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to attach the wheel to the GitHub release
+  id-token: write   # required for PyPI Trusted Publishing (OIDC)
+
+jobs:
+  build-and-publish:
+    name: Build sdist + wheel, publish to PyPI, attach to release
+    runs-on: ubuntu-latest
+    environment:
+      # On pypi.org → manage project → publishing → add a "trusted publisher"
+      # with this exact environment name + owner/repo/workflow filename.
+      name: pypi
+      url: https://pypi.org/p/imail
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Check tag matches pyproject.toml version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          file_version="$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          echo "tag=$tag_version pyproject=$file_version"
+          if [ "$tag_version" != "$file_version" ]; then
+            echo "::error::tag ($tag_version) does not match pyproject.toml version ($file_version). Bump pyproject and retag."
+            exit 1
+          fi
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Publish to PyPI (Trusted Publisher, no token needed)
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Create GitHub release with artefacts
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz

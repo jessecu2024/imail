@@ -388,7 +388,13 @@ body {
   background: var(--bg-2);
 }
 .brand { display: flex; gap: 0.5rem; align-items: center; }
-.logo { font-size: 1.25rem; }
+.brand .logo {
+  display: inline-block;
+  width: 1.6rem;
+  height: 1.6rem;
+  vertical-align: middle;
+  border-radius: 6px;
+}
 .name { font-weight: 600; letter-spacing: -0.01em; }
 
 .pill {

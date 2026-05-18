@@ -1,4 +1,8 @@
-# imail
+<p align="center">
+  <img src="src/imail/static/icon.svg" alt="imail" width="96" />
+</p>
+
+<h1 align="center">imail</h1>
 
 > Inbox triage as a local app. Log in once to Gmail, Outlook, or 163 — then clear your unread
 > emails by picking from three LLM-drafted replies per message. Powered by DeepSeek.
@@ -31,7 +35,32 @@ and saves your pick as a Gmail/IMAP draft. You stay in control of every Send but
 - ✦ **Three drafts per email in a single API call** — fast, cheap, self-consistent. DeepSeek auto-caches the system prefix server-side.
 - ✦ **Keyboard-first** — `1` / `2` / `3` to save a draft, `S` to skip, `Q` to end.
 
-## Quick Start
+## Install
+
+**The easy way** (any platform — macOS / Linux / Windows; just needs Python ≥ 3.11):
+
+```bash
+# Recommended: uv (fastest, no extra setup if you already have it).
+uv tool install imail
+
+# Or pipx (if you don't have uv).
+pipx install imail
+```
+
+Then put a DeepSeek API key into your `.env` (or export `DEEPSEEK_API_KEY`)
+and run `imail` — the browser opens to `http://127.0.0.1:8765`.
+
+**Try without installing** (uv only):
+
+```bash
+uvx --from imail imail
+```
+
+> Releases are also attached as `.whl` and `.tar.gz` on
+> [GitHub Releases](https://github.com/jessecu2024/imail/releases)
+> if you'd rather download the artefact yourself.
+
+## Quick Start (from source)
 
 ```bash
 # 1. Install deps

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="imail">
+  <title>imail</title>
+  <!-- Rounded tile: matches the app's accent blue. -->
+  <rect width="64" height="64" rx="14" fill="#7c9bff"/>
+  <!-- Envelope body. -->
+  <rect x="14" y="24" width="36" height="26" rx="3"
+        fill="none" stroke="#ffffff" stroke-width="3"/>
+  <!-- Envelope flap inside (V). -->
+  <path d="M14.5 27 L32 39 L49.5 27"
+        fill="none" stroke="#ffffff" stroke-width="3"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- The "i" dot floating above the envelope: reads as the i of imail,
+       doubles as a notification dot — the whole reason this app exists. -->
+  <circle cx="32" cy="14" r="3.6" fill="#ffffff"/>
+</svg>

@@ -31,8 +31,11 @@ dependencies = [
 imail = "imail.cli:main"
 
 [project.urls]
+Homepage = "https://github.com/jessecu2024/imail"
 Repository = "https://github.com/jessecu2024/imail"
 Issues = "https://github.com/jessecu2024/imail/issues"
+Documentation = "https://github.com/jessecu2024/imail/blob/main/README.md"
+Changelog = "https://github.com/jessecu2024/imail/releases"
 
 [dependency-groups]
 dev = [

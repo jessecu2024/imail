@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 64" role="img" aria-label="imail wordmark">
+  <title>imail</title>
+  <!-- Icon tile on the left. -->
+  <rect width="64" height="64" rx="14" fill="#7c9bff"/>
+  <rect x="14" y="24" width="36" height="26" rx="3"
+        fill="none" stroke="#ffffff" stroke-width="3"/>
+  <path d="M14.5 27 L32 39 L49.5 27"
+        fill="none" stroke="#ffffff" stroke-width="3"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="14" r="3.6" fill="#ffffff"/>
+  <!-- Wordmark — lowercase "imail" matching the app's voice. -->
+  <text x="80" y="44"
+        font-family="-apple-system, system-ui, 'Helvetica Neue', Arial, sans-serif"
+        font-size="38" font-weight="600"
+        fill="#1f2937"
+        letter-spacing="-0.5">imail</text>
+</svg>
