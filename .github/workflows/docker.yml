@@ -41,10 +41,15 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/imail
+          # main pushes  → :main, :latest    (so the canonical
+          #                                   `docker pull ghcr.io/.../imail`
+          #                                   without a tag always works)
+          # v* tag pushes → :1.3.0, :1.3, :latest
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build + push
