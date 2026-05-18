@@ -102,9 +102,23 @@ sign in, and you're triaging.
 uvx --from imail-cli imail
 ```
 
+**Or run via Docker** (no Python install needed):
+
+```bash
+docker run --rm -p 8765:8765 \
+  -v ~/.config/imail:/root/.config/imail \
+  -e DEEPSEEK_API_KEY=sk-... \
+  ghcr.io/jessecu2024/imail:latest
+# → open http://localhost:8765 in your browser
+```
+
+The mounted `~/.config/imail` keeps your accounts + saved replies between
+container restarts.
+
 > Releases are also attached as `.whl` and `.tar.gz` on
 > [GitHub Releases](https://github.com/jessecu2024/imail/releases)
-> if you'd rather download the artefact yourself.
+> if you'd rather download the artefact yourself. See
+> [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ## Quick Start (from source)
 

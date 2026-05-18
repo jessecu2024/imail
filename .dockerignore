@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+.uv-cache
+.ruff_cache
+.mypy_cache
+.pytest_cache
+__pycache__
+*.pyc
+dist
+build
+docs/screenshots
+tests
+.env
+.env.local
+imail.log
+*.log
