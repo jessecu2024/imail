@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How do I set up Gmail / Outlook / 163?
+    url: https://github.com/jessecu2024/imail/blob/main/docs/imap-setup.md
+    about: Provider-specific app-password and credentials walkthroughs.
+  - name: My work mailbox is locked down — what now?
+    url: https://github.com/jessecu2024/imail/blob/main/docs/forwarding-workflow.md
+    about: The validated forwarding-to-163 fallback for CityU-style tenants.

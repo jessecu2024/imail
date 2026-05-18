@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest a new capability or improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Concrete > abstract. "Inbox triage should also work on threads, not
+        just single messages, because…" lands faster than "imail should be
+        smarter about threads."
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can't you do today? What workaround are you using?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like instead
+      description: |
+        Sketch it out — a flow, a mock, a screenshot from another tool.
+        Doesn't have to be polished.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered (optional)
+      description: |
+        Anything you already tried, or other shapes the feature could take.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope this might affect
+      options:
+        - label: New mail provider
+        - label: LLM behaviour (prompt / format / model choice)
+        - label: UI / keyboard shortcuts
+        - label: Storage / cache / sync
+        - label: Packaging / install / CI

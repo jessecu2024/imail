@@ -5,6 +5,10 @@
 <h1 align="center">imail</h1>
 
 <p align="center">
+  <img src="docs/screenshots/01-shell.png" alt="imail screenshot — three reply tones for the same email" width="100%" />
+</p>
+
+<p align="center">
   <a href="https://pypi.org/project/imail-cli/"><img alt="PyPI" src="https://img.shields.io/pypi/v/imail-cli.svg"></a>
   <a href="https://pypi.org/project/imail-cli/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/imail-cli.svg"></a>
   <a href="https://github.com/jessecu2024/imail/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
@@ -31,6 +35,31 @@ and saves your pick as a Gmail/IMAP draft. You stay in control of every Send but
   └─────────────┘   └─────────────┘   └─────────────┘
    1 / 2 / 3 → save draft     S → skip     Q → end session
 ```
+
+## Why this exists
+
+Email is mostly **acknowledging or deferring** — yes / no / "let me check
+and get back to you." Each one of those takes 30 seconds of phrasing
+even though the *decision* takes one. `imail` flips the workflow so
+phrasing is one keystroke and you're left with the decision:
+
+- **3 drafts in one round-trip.** DeepSeek sees the email once and
+  returns *positive / neutral / negative* together — one API call,
+  three angles, ~$0.0002. The model never sees a second prompt to
+  "rephrase more polite" or "try again less eager".
+- **Your mailbox stays where it is.** imail logs into your existing
+  Gmail / Outlook / 163 via OAuth or IMAP. Saved drafts land in the
+  same Drafts folder you already use — they show up on your phone too.
+- **Local-first.** Email content stays on your machine. The only
+  network hop is to DeepSeek for the draft itself. No imail server,
+  no inbox copy uploaded anywhere.
+- **One UI across providers.** Three reply tones, the same keyboard
+  shortcuts (1 / 2 / 3 / S / Q), whether your work mail is Microsoft
+  365 and your personal is Gmail or your school is 163.
+- **Persists what you've handled.** Already-replied emails are tagged
+  with a green "Replied" badge in the inbox and surfaced in Sent so
+  you can re-read the reply you actually chose — no token waste on
+  re-drafting.
 
 ## Features
 

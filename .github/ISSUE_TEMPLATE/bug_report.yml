@@ -1,0 +1,98 @@
+name: Bug report
+description: Something in imail isn't working the way it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. The more concrete you can
+        be about *what you saw* vs *what you expected*, the faster a fix
+        lands. The fields below are the bare minimum I need to reproduce —
+        if any of them feel obvious or silly to fill in, fill them in anyway.
+
+  - type: input
+    id: imail-version
+    attributes:
+      label: imail version
+      description: Output of `imail --version`.
+      placeholder: imail 1.3.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How did you install imail?
+      options:
+        - "uv tool install imail-cli"
+        - "pipx install imail-cli"
+        - "pip install imail-cli (inside a venv)"
+        - "git clone + uv sync (from source)"
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Mail provider this happened with
+      multiple: true
+      options:
+        - Gmail
+        - "Microsoft 365 / Office 365"
+        - Personal Outlook / Hotmail
+        - "163 / NetEase"
+        - 126
+        - QQ
+        - Yahoo
+        - iCloud
+        - Custom IMAP host
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system + version
+      placeholder: "macOS 15.3 / Ubuntu 24.04 / Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: One paragraph. What did you do, what did you see, what did you expect?
+      placeholder: |
+        I clicked an email in the Sent folder. Got an error pill saying
+        "Could not retrieve message N from <folder>" instead of the body.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server log
+      description: |
+        Output from the terminal where you ran `imail`. Include 10 lines
+        around the error if possible. Redact any auth tokens or
+        passwords before pasting.
+      render: shell
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Browser console / network errors (optional)
+      description: |
+        Open DevTools (⌘⌥I / Ctrl-Shift-I), reproduce, paste anything red
+        from the Console or Network tabs.
+      render: text

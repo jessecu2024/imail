@@ -26,6 +26,19 @@
     </div>
   </header>
 
+  <!-- ============ Setup banner: DEEPSEEK_API_KEY missing ============ -->
+  <template x-if="status.ok && !status.llm_configured">
+    <div class="setup-banner">
+      <strong>⚠ DEEPSEEK_API_KEY is not set.</strong>
+      The UI loads, but reply drafting will fail until you add a key.
+      <ol>
+        <li>Get one at <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com/api_keys</a> (free signup, then click <em>Create API key</em>).</li>
+        <li>Set it: <code>export DEEPSEEK_API_KEY=sk-...</code> in your shell, or add it to <code>~/.config/imail/.env</code>.</li>
+        <li>Restart <code>imail</code>.</li>
+      </ol>
+    </div>
+  </template>
+
   <!-- =================== APP SHELL =================== -->
   <div class="app-shell">
 
