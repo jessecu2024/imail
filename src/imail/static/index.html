@@ -25,9 +25,10 @@
       </template>
       <button class="icon-btn" :class="{ active: view === 'settings' }" title="Settings"
               @click="view = view === 'settings' ? 'welcome' : 'settings'">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="10" cy="10" r="2.5"/>
-          <path d="M10 1.5v2.5M10 16v2.5M3.5 10H1M19 10h-2.5M5.4 5.4L3.6 3.6M16.4 16.4l-1.8-1.8M5.4 14.6l-1.8 1.8M16.4 3.6l-1.8 1.8"/>
+        <!-- Proper cog/gear: 8 teeth around a circle (Feather/Lucide style). -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
       </button>
     </div>
@@ -118,8 +119,21 @@
         <button class="link-back" @click="view = accounts.length ? 'welcome' : 'add'">← back</button>
         <h1 class="page-title">Settings</h1>
 
-        <section class="settings-card">
+        <nav class="settings-nav" aria-label="Settings sections">
+          <a href="#accounts">Accounts</a>
+          <a href="#replies">Replies</a>
+          <a href="#shortcuts">Shortcuts</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#storage">Storage</a>
+          <a href="#about">About</a>
+        </nav>
+
+        <section class="settings-card" id="accounts">
           <h2>Accounts</h2>
+          <p class="muted card-lede">
+            Mail accounts imail is logged into. Removing one revokes its
+            keyring entry and forgets every cached reply for it.
+          </p>
           <template x-if="accounts.length === 0">
             <p class="muted">No accounts yet. Add one from the sidebar.</p>
           </template>
@@ -131,28 +145,103 @@
                   <strong x-text="acct.label || acct.username || acct.kind"></strong>
                   <span class="muted small" x-text="acct.username || acct.imap_host || acct.kind"></span>
                 </div>
+                <span class="muted small" x-text="acct.kind === 'gmail' ? 'Gmail OAuth' : ((acct.imap_preset || 'imap') + ' · IMAP')"></span>
                 <button class="danger" @click="removeAccount(acct.id)">Remove</button>
               </li>
             </template>
           </ul>
+          <button class="primary block-mini" @click="view = 'add'; chosen = ''; resetForms()">+ Add account</button>
         </section>
 
-        <section class="settings-card">
-          <h2>Reply preferences</h2>
+        <section class="settings-card" id="replies">
+          <h2>Replies</h2>
           <dl class="settings-list">
-            <div><dt>Signature</dt><dd>Every reply ends with <code>Best regards,</code> followed by <code x-text="status.signoff || 'Jie Xu'"></code>. Override with <code>USER_SIGNOFF</code> in <code>~/.config/imail/.env</code>.</dd></div>
-            <div><dt>Model</dt><dd>Currently <code x-text="status.model || 'deepseek-chat'"></code>. Switch with <code>IMAIL_MODEL=deepseek-reasoner</code> for sharper, slower drafts.</dd></div>
-            <div><dt>Config directory</dt><dd><code x-text="status.config_dir || '~/.config/imail'"></code> — holds <code>accounts.json</code>, OAuth tokens, and the per-account reply store.</dd></div>
+            <div>
+              <dt>Format</dt>
+              <dd>Every drafted reply opens with <code>Dear &lt;FirstName&gt;,</code> and closes with <code>Best regards,</code> over your sign-off. Three tones — positive / neutral / negative — drafted in a single API call.</dd>
+            </div>
+            <div>
+              <dt>Signature</dt>
+              <dd>Currently <code x-text="status.signoff || 'Jie Xu'"></code>. Override by setting <code>USER_SIGNOFF=&lt;your name&gt;</code> in <code>~/.config/imail/.env</code>, then restart.</dd>
+            </div>
+            <div>
+              <dt>Language</dt>
+              <dd>All drafts are written in English regardless of the incoming email's language. (Configurable in a future release.)</dd>
+            </div>
+            <div>
+              <dt>Model</dt>
+              <dd>
+                Currently <code x-text="status.model || 'deepseek-chat'"></code>.
+                <span class="muted small">Choices: <code>deepseek-chat</code> (fast / cheap) · <code>deepseek-reasoner</code> (sharper, uses CoT — slower / pricier). Set <code>IMAIL_MODEL</code> + restart.</span>
+              </dd>
+            </div>
+            <div>
+              <dt>Endpoint</dt>
+              <dd>OpenAI-compatible. Default DeepSeek; point <code>IMAIL_BASE_URL</code> at Together / Groq / Moonshot / a self-hosted Ollama instance to keep email bodies off third-party servers.</dd>
+            </div>
           </dl>
         </section>
 
-        <section class="settings-card">
-          <h2>About</h2>
+        <section class="settings-card" id="shortcuts">
+          <h2>Keyboard shortcuts</h2>
+          <p class="muted card-lede">imail is built to be flown through — pick a tone with a single key.</p>
+          <table class="shortcut-table">
+            <tbody>
+              <tr><td><kbd>1</kbd></td><td>Pick the <strong>positive</strong> reply</td></tr>
+              <tr><td><kbd>2</kbd></td><td>Pick the <strong>neutral</strong> reply</td></tr>
+              <tr><td><kbd>3</kbd></td><td>Pick the <strong>negative</strong> reply</td></tr>
+              <tr><td><kbd>⌘</kbd> + <kbd>↵</kbd></td><td>Send the picked reply now</td></tr>
+              <tr><td><kbd>D</kbd></td><td>Save the picked reply as a draft (don't send)</td></tr>
+              <tr><td><kbd>S</kbd></td><td>Skip this email (batch mode)</td></tr>
+              <tr><td><kbd>Q</kbd></td><td>End the triage session</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="settings-card" id="privacy">
+          <h2>Privacy &amp; security</h2>
+          <ul class="check-list">
+            <li><span class="ok">✓</span> Server binds to <code>127.0.0.1</code> by default — only your machine reaches the UI.</li>
+            <li><span class="ok">✓</span> IMAP passwords stay in the OS keyring (macOS Keychain / Windows Credential Manager / Secret Service on Linux). Never in <code>accounts.json</code> or <code>.env</code>.</li>
+            <li><span class="ok">✓</span> OAuth tokens live at <code x-text="(status.config_dir || '~/.config/imail') + '/token-*.json'"></code>, mode 0600.</li>
+            <li><span class="ok">✓</span> Gmail provider requests <code>gmail.modify</code> only — it can fetch, draft, mark-read, archive. <strong>No send scope.</strong></li>
+            <li><span class="warn">!</span> Email bodies are sent to <code>IMAIL_BASE_URL</code> (DeepSeek by default) for draft generation. To stay fully on-device, point it at a local Ollama / vLLM.</li>
+            <li><span class="ok">✓</span> No telemetry. imail makes no outbound requests other than to IMAP/Gmail and your configured LLM endpoint.</li>
+          </ul>
+        </section>
+
+        <section class="settings-card" id="storage">
+          <h2>Local data</h2>
+          <p class="muted card-lede">Where imail keeps state on this machine. Everything in this folder is yours — back it up to move accounts to another computer.</p>
+          <dl class="settings-list">
+            <div>
+              <dt>Config directory</dt>
+              <dd><code x-text="status.config_dir || '~/.config/imail'"></code></dd>
+            </div>
+            <div>
+              <dt>Account manifest</dt>
+              <dd><code x-text="(status.config_dir || '~/.config/imail') + '/accounts.json'"></code> — provider kind, hostname, label. No secrets.</dd>
+            </div>
+            <div>
+              <dt>Reply store</dt>
+              <dd><code x-text="(status.config_dir || '~/.config/imail') + '/replies-&lt;account-id&gt;.json'"></code> — pending drafts (cached three-replies) + done (your chosen reply per email).</dd>
+            </div>
+            <div>
+              <dt>Gmail credentials</dt>
+              <dd><code x-text="(status.config_dir || '~/.config/imail') + '/credentials.json'"></code> + <code>token-*.json</code> per Gmail account.</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="settings-card" id="about">
+          <h2>About imail</h2>
           <dl class="settings-list">
             <div><dt>Version</dt><dd><code>imail 1.3.2</code> · <a href="https://github.com/jessecu2024/imail/releases" target="_blank" rel="noopener">all releases</a></dd></div>
-            <div><dt>Source</dt><dd><a href="https://github.com/jessecu2024/imail" target="_blank" rel="noopener">github.com/jessecu2024/imail</a></dd></div>
+            <div><dt>Source code</dt><dd><a href="https://github.com/jessecu2024/imail" target="_blank" rel="noopener">github.com/jessecu2024/imail</a></dd></div>
+            <div><dt>Distribution</dt><dd><a href="https://pypi.org/project/imail-cli/" target="_blank" rel="noopener">PyPI · imail-cli</a> · <a href="https://github.com/jessecu2024/imail/pkgs/container/imail" target="_blank" rel="noopener">GHCR Docker</a> · <a href="https://github.com/jessecu2024/homebrew-tap" target="_blank" rel="noopener">Homebrew tap</a></dd></div>
             <div><dt>License</dt><dd>AGPL-3.0-or-later · commercial inquiries: <a href="mailto:wzh4464@gmail.com">wzh4464@gmail.com</a></dd></div>
             <div><dt>Report a bug</dt><dd><a href="https://github.com/jessecu2024/imail/issues/new?template=bug_report.yml" target="_blank" rel="noopener">file an issue</a></dd></div>
+            <div><dt>Request a feature</dt><dd><a href="https://github.com/jessecu2024/imail/issues/new?template=feature_request.yml" target="_blank" rel="noopener">open a request</a></dd></div>
           </dl>
         </section>
       </section>
@@ -249,7 +338,12 @@
               @keydown.enter="runSearch()"
               @keydown.escape="clearSearch()"
             />
-            <button class="link" @click="runSearch()" :disabled="busy">🔍</button>
+            <button class="icon-btn search-btn" @click="runSearch()" :disabled="busy" title="Search">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="9" cy="9" r="5.5"/>
+                <path d="M13.5 13.5l4 4"/>
+              </svg>
+            </button>
             <button class="link" x-show="searchActive" @click="clearSearch()">clear</button>
             <span class="syncing-pill" x-show="syncing" x-cloak>
               <span class="dot"></span> refreshing…

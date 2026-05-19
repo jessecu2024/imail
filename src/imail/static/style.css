@@ -1021,3 +1021,118 @@ kbd {
 @media (max-width: 640px) {
   .settings-list > div { grid-template-columns: 1fr; gap: 0.2rem; }
 }
+
+/* Anchored nav at the top of Settings — jumps to each section card. */
+.settings-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: -0.6rem 0 1.5rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.settings-nav a {
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.86rem;
+  color: var(--text-soft);
+  text-decoration: none;
+  transition: background 100ms ease, color 100ms ease;
+}
+.settings-nav a:hover { background: var(--accent-bg); color: var(--accent); }
+
+.card-lede { margin: -0.4rem 0 1.1rem; font-size: 0.9rem; }
+
+/* "+ Add account" CTA inside Settings → Accounts (smaller than the
+   sidebar's full-width version). */
+.primary.block-mini {
+  display: inline-block;
+  margin: 1rem 0 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.88rem;
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.primary.block-mini:hover { background: var(--accent-2); }
+
+/* Keyboard-shortcut table in Settings. */
+.shortcut-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.shortcut-table td {
+  padding: 0.45rem 0.6rem;
+  border-top: 1px solid var(--border-2);
+}
+.shortcut-table tr:first-child td { border-top: none; }
+.shortcut-table td:first-child { width: 7rem; }
+.shortcut-table kbd {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-family: ui-monospace, "SFMono-Regular", monospace;
+  color: var(--text);
+  margin: 0 0.1rem;
+}
+
+/* Privacy / security checklist. */
+.check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.check-list li {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+.check-list .ok {
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pos-bg);
+  color: var(--pos);
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 0.75rem;
+}
+.check-list .warn {
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 0.75rem;
+}
+.check-list code { background: var(--bg-3); padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.82rem; }
+.check-list strong { color: var(--text); }
+
+/* Search button uses the same icon-btn frame but with a fixed sibling
+   margin-left so it sits flush against the input. */
+.icon-btn.search-btn { margin-left: 0; }
