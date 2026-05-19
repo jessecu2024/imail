@@ -66,12 +66,14 @@
                   :class="{ active: selectedAccount && selectedAccount.id === acct.id && selectedFolder === f.kind }"
                   @click="openFolder(acct, f.kind)"
                 >
-                  <span class="icon" x-text="f.icon"></span>
+                  <span class="folder-icon" x-html="folderIconSvg(f.kind)"></span>
                   <span class="name" x-text="f.label"></span>
+                  <span class="count-badge" x-show="folderBadge(f.kind) > 0" x-text="folderBadge(f.kind)"></span>
                 </button>
               </template>
               <button class="folder-link danger" @click="removeAccount(acct.id)">
-                <span class="icon">🗑</span><span class="name">Remove account</span>
+                <span class="folder-icon" x-html="folderIconSvg('junk')"></span>
+                <span class="name">Remove account</span>
               </button>
             </div>
           </div>
@@ -226,13 +228,16 @@
           <template x-for="m in messageList" :key="m.id">
             <li>
               <button class="message-row" :class="{ unread: m.unread, replied: m.replied }" @click="openMessage(m)">
-                <div class="row-top">
-                  <span class="from" x-text="m.sender"></span>
-                  <span class="date" x-text="shortDate(m.date)"></span>
-                </div>
-                <div class="row-subject">
-                  <span x-show="m.replied" class="replied-badge">Replied</span>
-                  <span x-text="m.subject"></span>
+                <span class="avatar" :style="`background:${senderColor(m.sender)}`" x-text="senderInitial(m.sender)"></span>
+                <div class="row-body">
+                  <div class="row-top">
+                    <span class="from" x-text="m.sender"></span>
+                    <span class="date" x-text="shortDate(m.date)"></span>
+                  </div>
+                  <div class="row-subject">
+                    <span x-show="m.replied" class="replied-badge">Replied</span>
+                    <span x-text="m.subject"></span>
+                  </div>
                 </div>
                 <span
                   class="row-delete"

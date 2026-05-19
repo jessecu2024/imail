@@ -186,11 +186,61 @@ function app() {
 
     folderList(_acct) {
       return [
-        { kind: "inbox",  icon: "📥", label: "Inbox" },
-        { kind: "drafts", icon: "📝", label: "Drafts" },
-        { kind: "sent",   icon: "📤", label: "Sent" },
-        { kind: "junk",   icon: "🗑", label: "Junk" },
+        { kind: "inbox",  label: "Inbox"  },
+        { kind: "drafts", label: "Drafts" },
+        { kind: "sent",   label: "Sent"   },
+        { kind: "junk",   label: "Junk"   },
       ];
+    },
+
+    folderIconSvg(kind) {
+      // SVG strings injected via x-html — Alpine's `<template x-if>` is HTML
+      // namespace and doesn't render inside <svg>.
+      const head = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+      const paths = {
+        inbox:  '<path d="M3 13l2-7h10l2 7"/><path d="M3 13v3a1 1 0 001 1h12a1 1 0 001-1v-3"/><path d="M3 13h4l1 2h4l1-2h4"/>',
+        drafts: '<path d="M13 4l3 3-8 8H5v-3l8-8z"/><path d="M12 5l3 3"/>',
+        sent:   '<path d="M17 3L3 9l7 2 2 7 5-15z"/><path d="M10 11l4-4"/>',
+        junk:   '<path d="M4 6h12"/><path d="M6 6v10a1 1 0 001 1h6a1 1 0 001-1V6"/><path d="M8 6V4h4v2"/>',
+      };
+      return head + (paths[kind] || "") + "</svg>";
+    },
+
+    /* Unread count for the inbox of the currently-selected folder so the
+       sidebar can show a small badge. Counts from the in-memory messageList
+       to avoid extra network round-trips. */
+    folderBadge(kind) {
+      if (!this.selectedAccount) return 0;
+      if (this.selectedFolder !== kind) return 0;
+      if (kind === "inbox") {
+        return this.messageList.filter((m) => m.unread).length;
+      }
+      return 0;
+    },
+
+    /* Deterministic colour + initial for a sender avatar circle. Hash the
+       sender display string into a small palette so the same person always
+       gets the same colour without us tracking it. */
+    senderInitial(sender) {
+      if (!sender) return "?";
+      const m = sender.match(/^"?\s*([A-Za-zÀ-ſ])/);
+      if (m) return m[1].toUpperCase();
+      const at = sender.indexOf("@");
+      if (at > 0) return sender[0].toUpperCase();
+      return sender[0].toUpperCase();
+    },
+
+    senderColor(sender) {
+      // 8 colours that stay readable on white with white-text initials.
+      const palette = [
+        "#4F46E5", "#0891B2", "#16A34A", "#CA8A04",
+        "#DC2626", "#DB2777", "#9333EA", "#0EA5E9",
+      ];
+      let h = 0;
+      for (let i = 0; i < (sender || "").length; i++) {
+        h = (h * 31 + sender.charCodeAt(i)) >>> 0;
+      }
+      return palette[h % palette.length];
     },
 
     folderTitle(kind) {
