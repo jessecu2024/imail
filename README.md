@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://pypi.org/project/imail-cli/"><img alt="PyPI" src="https://img.shields.io/pypi/v/imail-cli.svg"></a>
   <a href="https://pypi.org/project/imail-cli/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/imail-cli.svg"></a>
-  <a href="https://github.com/jessecu2024/imail/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://github.com/jessecu2024/imail/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0%20or%20Commercial-blue.svg"></a>
   <a href="https://github.com/jessecu2024/imail/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jessecu2024/imail/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
@@ -216,4 +216,22 @@ tests/                    pytest suites
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Dual-licensed. Pick whichever fits your use:
+
+- **AGPL-3.0-or-later** (default, free) — full text in [LICENSE](LICENSE).
+  You're free to use, modify, fork, and self-host imail. The catch: if you
+  modify the code and **either redistribute it or run it as a network
+  service** (a SaaS, a hosted product, anything end users reach over a
+  network), you must release your modifications under AGPL-3.0 too. This
+  is the standard "no closed-source forks, no proprietary SaaS rebrand"
+  guarantee — see the [GNU AGPL FAQ](https://www.gnu.org/licenses/why-affero-gpl.html)
+  for the rationale.
+- **Commercial license** — if AGPL's copyleft obligations don't fit your
+  product (you want to ship a proprietary version, host imail inside a
+  closed-source SaaS, or distribute imail as a library without exposing
+  your own source), email **wzh4464@gmail.com** with what you'd like to
+  do and we'll work out a commercial license.
+
+> Versions ≤ 1.3.0 on PyPI were published under MIT. From v1.3.1 onward
+> the license switches to AGPL-3.0-or-later (or commercial). If you
+> installed `imail-cli==1.3.0` you remain on MIT terms for that copy.

@@ -9,6 +9,23 @@ Version numbers follow [SemVer](https://semver.org/).
 
 ---
 
+## [1.3.1] — 2026-05-19
+
+### Changed
+
+- **License switched to AGPL-3.0-or-later** (was MIT). The project is
+  also available under a commercial license — email
+  `wzh4464@gmail.com` if AGPL's copyleft obligations don't fit your
+  product. Existing 1.3.0 installs retain their MIT grant; the new
+  terms apply from 1.3.1 onward. See [LICENSE](LICENSE) for the full
+  AGPL text and [README "License"](README.md#license) for the dual
+  arrangement.
+- Repository is now public on GitHub so PyPI's homepage link
+  resolves, brew audit passes, and external contributors can file
+  issues / PRs.
+
+---
+
 ## [1.3.0] — 2026-05-18
 
 First release on PyPI as `imail-cli`. Bundles everything since v1.2.1 and
@@ -127,6 +144,7 @@ adds the install-and-distribute pipeline.
 
 History before semver discipline. See `git log` for individual commits.
 
+[1.3.1]: https://github.com/jessecu2024/imail/releases/tag/v1.3.1
 [1.3.0]: https://github.com/jessecu2024/imail/releases/tag/v1.3.0
 [1.2.1]: https://github.com/jessecu2024/imail/releases/tag/v1.2.1
 [1.2.0]: https://github.com/jessecu2024/imail/releases/tag/v1.2.0
