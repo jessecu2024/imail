@@ -1,27 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="imail">
   <title>imail</title>
   <defs>
-    <linearGradient id="imail-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3B82F6"/>
-      <stop offset="1" stop-color="#6366F1"/>
+    <!-- Sky→deeper-sky gradient, evokes macOS Mail.app's tile. -->
+    <linearGradient id="imail-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5DBDFF"/>
+      <stop offset="1" stop-color="#1F8FE6"/>
     </linearGradient>
     <filter id="imail-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#1E3A8A" flood-opacity="0.18"/>
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#0B5993" flood-opacity="0.22"/>
     </filter>
   </defs>
-  <!-- Rounded tile, azure→indigo gradient. -->
+  <!-- Rounded tile. -->
   <rect width="64" height="64" rx="14" fill="url(#imail-bg)"/>
-  <!-- Envelope: bolder + slightly wider than v1 for more presence. -->
+  <!-- White envelope, pushed down so the dot above reads as the "i" dot. -->
   <g filter="url(#imail-shadow)">
-    <rect x="11" y="22" width="42" height="28" rx="3.5"
+    <rect x="11" y="26" width="42" height="26" rx="3.5"
           fill="none" stroke="#ffffff" stroke-width="3.5"/>
-    <path d="M11.5 25.5 L32 40 L52.5 25.5"
+    <path d="M11.5 29 L32 42 L52.5 29"
           fill="none" stroke="#ffffff" stroke-width="3.5"
           stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <!-- Bright amber notification dot in the upper-right — reads as the i's
-       dot AND as "you have mail". White rim makes it pop on dark
-       backgrounds (dock, favicon at 16px). -->
-  <circle cx="49" cy="17" r="7" fill="#ffffff"/>
-  <circle cx="49" cy="17" r="5.2" fill="#FBBF24"/>
+  <!-- The "i" dot, centred above the envelope. Bright red for maximum
+       contrast against the blue tile + ties to the imail brand by
+       reading as the dot of a lowercase i. -->
+  <circle cx="32" cy="14" r="5.5" fill="#EF4444"/>
 </svg>
