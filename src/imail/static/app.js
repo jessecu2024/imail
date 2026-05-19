@@ -233,7 +233,7 @@ function app() {
     senderColor(sender) {
       // 8 colours that stay readable on white with white-text initials.
       const palette = [
-        "#4F46E5", "#0891B2", "#16A34A", "#CA8A04",
+        "#1F8FE6", "#0891B2", "#16A34A", "#CA8A04",
         "#DC2626", "#DB2777", "#9333EA", "#0EA5E9",
       ];
       let h = 0;

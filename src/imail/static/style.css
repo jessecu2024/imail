@@ -22,11 +22,11 @@
   --neg:       #dc2626;
   --neg-bg:    #fef2f2;
 
-  /* Brand. Same azure→indigo as the logo gradient. */
-  --accent:    #4F46E5;      /* indigo for CTAs / selected */
-  --accent-2:  #3B82F6;      /* azure for hover / link */
-  --accent-bg: #eef2ff;      /* light indigo wash for selection */
-  --warn:      #f59e0b;      /* amber, the logo dot */
+  /* Brand. Matches the logo's sky-blue gradient (#5DBDFF → #1F8FE6). */
+  --accent:    #1F8FE6;      /* deeper sky — CTAs / selected */
+  --accent-2:  #5DBDFF;      /* lighter sky — hover / link */
+  --accent-bg: #E6F4FE;      /* sky wash for selection */
+  --warn:      #EF4444;      /* red — matches the logo's "i" dot */
 
   /* Shadows + radii. */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
@@ -899,3 +899,125 @@ kbd {
 }
 .debug-bar .msg-pill { color: var(--pos); }
 .main-pane { padding-bottom: 4rem; }
+
+/* ===================== TOP-BAR ICON BUTTONS ===================== */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  margin-left: 0.5rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+.icon-btn svg { width: 1.1rem; height: 1.1rem; }
+.icon-btn:hover { background: var(--bg-3); color: var(--text); }
+.icon-btn.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ===================== SETTINGS PAGE ===================== */
+.settings {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.6rem 6rem;
+}
+.settings .page-title { margin-bottom: 1.6rem; }
+
+.settings-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.4rem 1.6rem;
+  margin-bottom: 1.2rem;
+  box-shadow: var(--shadow-sm);
+}
+.settings-card h2 {
+  margin: 0 0 1rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.account-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.account-row .kind-dot { flex-shrink: 0; }
+.account-row .account-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.account-row .account-meta strong { font-weight: 600; }
+.account-row .account-meta .small { font-size: 0.82rem; }
+.account-row .danger {
+  padding: 0.35rem 0.85rem;
+  background: transparent;
+  color: var(--neg);
+  border: 1px solid var(--neg);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.account-row .danger:hover { background: var(--neg); color: #ffffff; }
+
+.settings-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.settings-list > div {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.8rem;
+  align-items: baseline;
+}
+.settings-list dt {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.settings-list dd {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+.settings-list code {
+  background: var(--bg-3);
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.82rem;
+}
+.settings-list a { color: var(--accent); }
+@media (max-width: 640px) {
+  .settings-list > div { grid-template-columns: 1fr; gap: 0.2rem; }
+}
