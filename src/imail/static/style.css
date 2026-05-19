@@ -1,26 +1,38 @@
 /* ============================================================
-   imail — dark, calm, tactile.
+   imail — light, clean, Gmail-adjacent.
    ============================================================ */
 :root {
-  --bg:        #0e1014;
-  --bg-2:      #161922;
-  --bg-3:      #1d2230;
-  --border:    #2a3042;
-  --text:      #e8eaf0;
-  --text-soft: #98a0b3;
-  --text-dim:  #5b6477;
+  /* Surface stack: page → side rail → cards. */
+  --bg:        #f6f8fc;      /* page background (Gmail-ish off-white) */
+  --bg-2:      #ffffff;      /* sidebar + content panes */
+  --bg-3:      #eef2f8;      /* hover / selected row */
+  --border:    #e2e6ee;      /* primary divider */
+  --border-2:  #eef1f6;      /* softer divider for list rows */
 
-  --pos:       #4ade80;
-  --pos-bg:    rgba(74, 222, 128, 0.08);
-  --neu:       #f5c451;
-  --neu-bg:    rgba(245, 196, 81, 0.08);
-  --neg:       #f87171;
-  --neg-bg:    rgba(248, 113, 113, 0.08);
+  /* Type. */
+  --text:      #1f2937;      /* primary */
+  --text-soft: #4b5563;      /* secondary */
+  --text-dim:  #94a3b8;      /* tertiary (dates, meta) */
 
-  --accent:    #7c9bff;
-  --warn:      #fbbf24;
+  /* Tone colours used by the 3-reply cards. Solid hue + tinted bg. */
+  --pos:       #16a34a;
+  --pos-bg:    #ecfdf5;
+  --neu:       #b45309;
+  --neu-bg:    #fef3c7;
+  --neg:       #dc2626;
+  --neg-bg:    #fef2f2;
 
-  --radius:    12px;
+  /* Brand. Same azure→indigo as the logo gradient. */
+  --accent:    #4F46E5;      /* indigo for CTAs / selected */
+  --accent-2:  #3B82F6;      /* azure for hover / link */
+  --accent-bg: #eef2ff;      /* light indigo wash for selection */
+  --warn:      #f59e0b;      /* amber, the logo dot */
+
+  /* Shadows + radii. */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow:    0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --radius:    10px;
+  --radius-sm: 6px;
   --gap:       1rem;
 }
 
@@ -83,7 +95,7 @@ body {
   text-align: left;
 }
 .acct-name:hover { background: var(--bg-3); }
-.acct-name.active { background: rgba(124,155,255,0.10); color: var(--accent); }
+.acct-name.active { background: var(--accent-bg); color: var(--accent); }
 .acct-name .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acct-name .caret { color: var(--text-dim); font-size: 0.7rem; }
 .kind-dot {
@@ -109,7 +121,7 @@ body {
   text-align: left;
 }
 .folder-link:hover { background: var(--bg-3); color: var(--text); }
-.folder-link.active { background: rgba(124,155,255,0.13); color: var(--accent); }
+.folder-link.active { background: var(--accent-bg); color: var(--accent); }
 .folder-link.danger { color: var(--text-dim); font-size: 0.78rem; }
 .folder-link.danger:hover { color: var(--neg); }
 
@@ -162,7 +174,7 @@ body {
 }
 .search-input:focus { outline: none; border-color: var(--accent); }
 .search-q {
-  background: rgba(124, 155, 255, 0.10);
+  background: var(--accent-bg);
   padding: 0.1rem 0.5rem;
   border-radius: 4px;
   color: var(--accent);
@@ -181,7 +193,7 @@ body {
   color: var(--text-soft);
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
-  background: rgba(124, 155, 255, 0.08);
+  background: var(--accent-bg);
 }
 .syncing-pill .dot {
   width: 6px; height: 6px;
@@ -307,7 +319,7 @@ body {
   margin-right: 0.5rem;
   border-radius: 4px;
   background: var(--pos);
-  color: #0a1a0e;
+  color: #ffffff;
   font-size: 0.72rem;
   font-weight: 700;
   vertical-align: middle;
@@ -423,7 +435,7 @@ body {
   border-radius: 999px;
   font-weight: 500;
 }
-.pill.ok   { background: rgba(124, 155, 255, 0.12); color: var(--accent); }
+.pill.ok   { background: var(--accent-bg); color: var(--accent); }
 .pill.warn { background: rgba(251, 191, 36, 0.12); color: var(--warn); }
 
 /* ===================== LAYOUT ===================== */
@@ -518,7 +530,7 @@ body {
   transition: all 120ms ease;
 }
 .provider-tile:hover { border-color: var(--accent); }
-.provider-tile.active { border-color: var(--accent); background: rgba(124,155,255,0.06); }
+.provider-tile.active { border-color: var(--accent); background: var(--accent-bg); }
 
 .provider-icon { font-size: 1.5rem; }
 .provider-name { font-weight: 600; margin-top: 0.3rem; }
@@ -559,7 +571,7 @@ input:focus { outline: none; border-color: var(--accent); }
   margin-top: 1.5rem;
   padding: 0.7rem 1.4rem;
   background: var(--accent);
-  color: #0e1014;
+  color: #ffffff;
   border: none;
   border-radius: 8px;
   font: inherit;
@@ -742,7 +754,7 @@ kbd {
   gap: 0.4rem;
   padding: 0.5rem 1rem;
   background: var(--pos);
-  color: #0a0a0a;
+  color: #ffffff;
   border: none;
   border-radius: 8px;
   font: inherit;
@@ -821,11 +833,11 @@ kbd {
   display: flex;
   gap: 1rem;
   padding: 0.4rem 1rem;
-  background: rgba(10, 10, 14, 0.95);
+  background: var(--bg-3);
   border-top: 1px solid var(--border);
   font-size: 0.72rem;
   font-family: ui-monospace, "SFMono-Regular", monospace;
-  color: var(--text-dim);
+  color: var(--text-soft);
   z-index: 9999;
   overflow-x: auto;
   white-space: nowrap;
