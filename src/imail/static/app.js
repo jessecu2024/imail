@@ -1,9 +1,193 @@
 /* Alpine.js component for imail. Sidebar + folder/message/triage state machine. */
 
+/* ============================================================
+   i18n string table. Add keys here, reference via this.t("key")
+   in templates. Reply *content* stays English regardless of the UI
+   language — that's a separate, deliberate product decision.
+   ============================================================ */
+const STRINGS = {
+  en: {
+    // chrome
+    accounts: "ACCOUNTS",
+    inbox: "Inbox",
+    drafts: "Drafts",
+    sent: "Sent",
+    junk: "Junk",
+    add_account: "+ Add account",
+    settings: "Settings",
+    search: "Search",
+    search_placeholder: "Search this folder…",
+    refresh: "refresh",
+    back: "← back",
+    next_arrow: "→ next",
+    deepseek_pill: "DeepSeek",
+    key_missing: "DEEPSEEK_API_KEY missing",
+    // welcome
+    welcome_title: "Inbox, in five seconds per email.",
+    welcome_lede: "imail fetches your unread mail and asks DeepSeek for three reply versions per message. You pick one with 1/2/3, draft it to your existing Drafts folder, and move on.",
+    pick_account_above: "Pick an account from the sidebar to start triaging.",
+    no_accounts_yet: "No accounts yet — add one below.",
+    // folder view
+    msg_count: "messages",
+    single_email_reply: "single-email reply",
+    syncing: "syncing…",
+    no_messages: "No messages in this folder.",
+    // triage / replies
+    from: "From",
+    date: "Date",
+    positive: "POSITIVE",
+    neutral: "NEUTRAL",
+    negative: "NEGATIVE",
+    pick_a_tone: "pick a tone",
+    skip: "skip",
+    end: "end",
+    send: "Send",
+    save_as_draft: "Save as draft only",
+    pick_another_tone: "← Pick another tone",
+    looks_like_spam: "Looks like spam.",
+    spam_moved: "It's been moved to",
+    spam_after: " automatically. No reply drafted.",
+    already_replied: "Already replied",
+    at_word: "at",
+    no_new_draft: "No new draft generated — tokens saved.",
+    your_saved_reply: "YOUR SAVED REPLY",
+    replied: "Replied",
+    drafting: "Drafting three replies…",
+    // settings
+    set_accounts: "Accounts",
+    set_accounts_lede: "Mail accounts imail is logged into. Removing one revokes its keyring entry and forgets every cached reply for it.",
+    set_replies: "Replies",
+    set_shortcuts: "Keyboard shortcuts",
+    set_shortcuts_lede: "imail is built to be flown through — pick a tone with a single key.",
+    set_privacy: "Privacy & security",
+    set_storage: "Local data",
+    set_storage_lede: "Where imail keeps state on this machine. Everything in this folder is yours — back it up to move accounts to another computer.",
+    set_about: "About imail",
+    set_language: "Language",
+    set_language_lede: "Interface language. Reply drafts are always in English regardless — that's a deliberate product choice (see Replies).",
+    remove: "Remove",
+    // password-managed buttons
+    delete_local_record: "Delete local saved-reply record",
+    delete_with_sync: "Delete (also removes from server + all devices)",
+    // settings row labels
+    row_format: "Format",
+    row_signature: "Signature",
+    row_language: "Language",
+    row_model: "Model",
+    row_endpoint: "Endpoint",
+    row_config_dir: "Config directory",
+    row_manifest: "Account manifest",
+    row_reply_store: "Reply store",
+    row_gmail_creds: "Gmail credentials",
+    row_version: "Version",
+    row_source: "Source code",
+    row_distribution: "Distribution",
+    row_license: "License",
+    row_report_bug: "Report a bug",
+    row_request_feature: "Request a feature",
+    // shortcut descriptions
+    sc_positive: "Pick the positive reply",
+    sc_neutral: "Pick the neutral reply",
+    sc_negative: "Pick the negative reply",
+    sc_send: "Send the picked reply now",
+    sc_draft: "Save the picked reply as a draft (don't send)",
+    sc_skip: "Skip this email (batch mode)",
+    sc_end: "End the triage session",
+  },
+  zh: {
+    accounts: "账号",
+    inbox: "收件箱",
+    drafts: "草稿",
+    sent: "已发送",
+    junk: "垃圾邮件",
+    add_account: "+ 添加账号",
+    settings: "设置",
+    search: "搜索",
+    search_placeholder: "在此文件夹中搜索…",
+    refresh: "刷新",
+    back: "← 返回",
+    next_arrow: "→ 下一封",
+    deepseek_pill: "DeepSeek",
+    key_missing: "DEEPSEEK_API_KEY 未设置",
+    welcome_title: "5 秒清掉一封邮件。",
+    welcome_lede: "imail 拉取你未读的邮件,让 DeepSeek 给每封写三种语气的回复。按 1 / 2 / 3 选一个,保存到你原本的草稿箱,处理下一封。",
+    pick_account_above: "从左侧选择一个邮箱账号开始。",
+    no_accounts_yet: "还没有账号 — 点下方添加。",
+    msg_count: "封",
+    single_email_reply: "单封回复",
+    syncing: "同步中…",
+    no_messages: "此文件夹没有邮件。",
+    from: "发件人",
+    date: "日期",
+    positive: "肯定",
+    neutral: "中性",
+    negative: "拒绝",
+    pick_a_tone: "选择语气",
+    skip: "跳过",
+    end: "结束",
+    send: "发送",
+    save_as_draft: "仅存草稿",
+    pick_another_tone: "← 换一个语气",
+    looks_like_spam: "看起来是垃圾邮件。",
+    spam_moved: "已自动移至",
+    spam_after: "。未生成回复。",
+    already_replied: "已回复",
+    at_word: "于",
+    no_new_draft: "未生成新草稿 — 节省了 API 调用。",
+    your_saved_reply: "你保存的回复",
+    replied: "已回复",
+    drafting: "正在生成三个回复…",
+    set_accounts: "账号",
+    set_accounts_lede: "imail 登录的邮箱账号。删除时会同时撤销 keyring 中的凭证、清掉该账号缓存的所有回复。",
+    set_replies: "回复设置",
+    set_shortcuts: "键盘快捷键",
+    set_shortcuts_lede: "imail 为快速处理而生 — 一个按键选择语气。",
+    set_privacy: "隐私与安全",
+    set_storage: "本地数据",
+    set_storage_lede: "imail 在本机存储的位置。这个文件夹里的所有东西都是你的 — 备份它就能把账号搬到另一台电脑。",
+    set_about: "关于 imail",
+    set_language: "界面语言",
+    set_language_lede: "界面文字的语言。无论选哪种,生成的回复始终是英文 — 这是产品定下的策略(见「回复设置」)。",
+    remove: "删除",
+    delete_local_record: "删除本地记录",
+    delete_with_sync: "删除(同时从服务器和所有设备删除)",
+    row_format: "格式",
+    row_signature: "签名",
+    row_language: "语言",
+    row_model: "模型",
+    row_endpoint: "接口地址",
+    row_config_dir: "配置目录",
+    row_manifest: "账号清单",
+    row_reply_store: "回复存储",
+    row_gmail_creds: "Gmail 凭证",
+    row_version: "版本",
+    row_source: "源代码",
+    row_distribution: "分发渠道",
+    row_license: "许可证",
+    row_report_bug: "报告 bug",
+    row_request_feature: "提交功能请求",
+    sc_positive: "选择肯定回复",
+    sc_neutral: "选择中性回复",
+    sc_negative: "选择拒绝回复",
+    sc_send: "立即发送所选回复",
+    sc_draft: "把所选回复保存为草稿(不发送)",
+    sc_skip: "跳过这封邮件(批量模式)",
+    sc_end: "结束本次处理",
+  },
+};
+
 function app() {
   return {
     /* ------------------------- global state ------------------------- */
-    view: "welcome",        // 'welcome' | 'add' | 'folder' | 'message' | 'triage'
+    view: "welcome",        // 'welcome' | 'add' | 'folder' | 'message' | 'triage' | 'settings'
+    lang: (function() {
+      try {
+        const saved = localStorage.getItem("imail.lang");
+        if (saved && STRINGS[saved]) return saved;
+      } catch { /* ignore */ }
+      const browser = (navigator.language || "en").toLowerCase();
+      return browser.startsWith("zh") ? "zh" : "en";
+    })(),
     status: { llm_configured: false, model: "", signoff: "", config_dir: "" },
 
     accounts: [],
@@ -67,6 +251,7 @@ function app() {
 
     /* ------------------------- lifecycle ------------------------- */
     async boot() {
+      document.documentElement.setAttribute("lang", this.lang);
       this.bindKeys();
       this._askNotifyPermission();
       await this.refresh();
@@ -184,12 +369,27 @@ function app() {
       this.openFolder(acct, "inbox");
     },
 
+    /* ---------- i18n helpers ---------- */
+    t(key) {
+      const dict = STRINGS[this.lang] || STRINGS.en;
+      if (dict[key] !== undefined) return dict[key];
+      if (STRINGS.en[key] !== undefined) return STRINGS.en[key];
+      return key;
+    },
+
+    setLang(code) {
+      if (!STRINGS[code]) return;
+      this.lang = code;
+      try { localStorage.setItem("imail.lang", code); } catch { /* ignore */ }
+      document.documentElement.setAttribute("lang", code);
+    },
+
     folderList(_acct) {
       return [
-        { kind: "inbox",  label: "Inbox"  },
-        { kind: "drafts", label: "Drafts" },
-        { kind: "sent",   label: "Sent"   },
-        { kind: "junk",   label: "Junk"   },
+        { kind: "inbox",  label: this.t("inbox")  },
+        { kind: "drafts", label: this.t("drafts") },
+        { kind: "sent",   label: this.t("sent")   },
+        { kind: "junk",   label: this.t("junk")   },
       ];
     },
 
@@ -244,7 +444,7 @@ function app() {
     },
 
     folderTitle(kind) {
-      return { inbox: "Inbox", drafts: "Drafts", sent: "Sent", junk: "Junk" }[kind] || "";
+      return this.t(kind) || "";
     },
 
     shortDate(raw) {

@@ -53,7 +53,7 @@
     <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
       <div class="sidebar-section">
-        <div class="sidebar-header">ACCOUNTS</div>
+        <div class="sidebar-header" x-text="t('accounts')"></div>
 
         <template x-for="acct in accounts" :key="acct.id">
           <div class="acct-block">
@@ -89,9 +89,7 @@
       </div>
 
       <div class="sidebar-footer">
-        <button class="primary block" @click="view = 'add'; chosen = ''; resetForms()">
-          + Add account
-        </button>
+        <button class="primary block" @click="view = 'add'; chosen = ''; resetForms()" x-text="t('add_account')"></button>
       </div>
     </aside>
 
@@ -116,24 +114,37 @@
 
       <!-- =============== SETTINGS =============== -->
       <section x-show="view === 'settings'" class="settings">
-        <button class="link-back" @click="view = accounts.length ? 'welcome' : 'add'">← back</button>
-        <h1 class="page-title">Settings</h1>
+        <button class="link-back" @click="view = accounts.length ? 'welcome' : 'add'" x-text="t('back')"></button>
+        <h1 class="page-title" x-text="t('settings')"></h1>
 
         <nav class="settings-nav" aria-label="Settings sections">
-          <a href="#accounts">Accounts</a>
-          <a href="#replies">Replies</a>
-          <a href="#shortcuts">Shortcuts</a>
-          <a href="#privacy">Privacy</a>
-          <a href="#storage">Storage</a>
-          <a href="#about">About</a>
+          <a href="#language" x-text="t('set_language')"></a>
+          <a href="#accounts" x-text="t('set_accounts')"></a>
+          <a href="#replies" x-text="t('set_replies')"></a>
+          <a href="#shortcuts" x-text="t('set_shortcuts')"></a>
+          <a href="#privacy" x-text="t('set_privacy')"></a>
+          <a href="#storage" x-text="t('set_storage')"></a>
+          <a href="#about" x-text="t('set_about')"></a>
         </nav>
 
+        <section class="settings-card" id="language">
+          <h2 x-text="t('set_language')"></h2>
+          <p class="muted card-lede" x-text="t('set_language_lede')"></p>
+          <div class="lang-row">
+            <button class="lang-btn" :class="{ active: lang === 'en' }" @click="setLang('en')">
+              <strong>English</strong>
+              <span class="muted small">English UI</span>
+            </button>
+            <button class="lang-btn" :class="{ active: lang === 'zh' }" @click="setLang('zh')">
+              <strong>中文</strong>
+              <span class="muted small">简体中文界面</span>
+            </button>
+          </div>
+        </section>
+
         <section class="settings-card" id="accounts">
-          <h2>Accounts</h2>
-          <p class="muted card-lede">
-            Mail accounts imail is logged into. Removing one revokes its
-            keyring entry and forgets every cached reply for it.
-          </p>
+          <h2 x-text="t('set_accounts')"></h2>
+          <p class="muted card-lede" x-text="t('set_accounts_lede')"></p>
           <template x-if="accounts.length === 0">
             <p class="muted">No accounts yet. Add one from the sidebar.</p>
           </template>
@@ -146,60 +157,60 @@
                   <span class="muted small" x-text="acct.username || acct.imap_host || acct.kind"></span>
                 </div>
                 <span class="muted small" x-text="acct.kind === 'gmail' ? 'Gmail OAuth' : ((acct.imap_preset || 'imap') + ' · IMAP')"></span>
-                <button class="danger" @click="removeAccount(acct.id)">Remove</button>
+                <button class="danger" @click="removeAccount(acct.id)" x-text="t('remove')"></button>
               </li>
             </template>
           </ul>
-          <button class="primary block-mini" @click="view = 'add'; chosen = ''; resetForms()">+ Add account</button>
+          <button class="primary block-mini" @click="view = 'add'; chosen = ''; resetForms()" x-text="t('add_account')"></button>
         </section>
 
         <section class="settings-card" id="replies">
-          <h2>Replies</h2>
+          <h2 x-text="t('set_replies')"></h2>
           <dl class="settings-list">
             <div>
-              <dt>Format</dt>
+              <dt x-text="t('row_format')"></dt>
               <dd>Every drafted reply opens with <code>Dear &lt;FirstName&gt;,</code> and closes with <code>Best regards,</code> over your sign-off. Three tones — positive / neutral / negative — drafted in a single API call.</dd>
             </div>
             <div>
-              <dt>Signature</dt>
+              <dt x-text="t('row_signature')"></dt>
               <dd>Currently <code x-text="status.signoff || 'Jie Xu'"></code>. Override by setting <code>USER_SIGNOFF=&lt;your name&gt;</code> in <code>~/.config/imail/.env</code>, then restart.</dd>
             </div>
             <div>
-              <dt>Language</dt>
+              <dt x-text="t('row_language')"></dt>
               <dd>All drafts are written in English regardless of the incoming email's language. (Configurable in a future release.)</dd>
             </div>
             <div>
-              <dt>Model</dt>
+              <dt x-text="t('row_model')"></dt>
               <dd>
                 Currently <code x-text="status.model || 'deepseek-chat'"></code>.
                 <span class="muted small">Choices: <code>deepseek-chat</code> (fast / cheap) · <code>deepseek-reasoner</code> (sharper, uses CoT — slower / pricier). Set <code>IMAIL_MODEL</code> + restart.</span>
               </dd>
             </div>
             <div>
-              <dt>Endpoint</dt>
+              <dt x-text="t('row_endpoint')"></dt>
               <dd>OpenAI-compatible. Default DeepSeek; point <code>IMAIL_BASE_URL</code> at Together / Groq / Moonshot / a self-hosted Ollama instance to keep email bodies off third-party servers.</dd>
             </div>
           </dl>
         </section>
 
         <section class="settings-card" id="shortcuts">
-          <h2>Keyboard shortcuts</h2>
-          <p class="muted card-lede">imail is built to be flown through — pick a tone with a single key.</p>
+          <h2 x-text="t('set_shortcuts')"></h2>
+          <p class="muted card-lede" x-text="t('set_shortcuts_lede')"></p>
           <table class="shortcut-table">
             <tbody>
-              <tr><td><kbd>1</kbd></td><td>Pick the <strong>positive</strong> reply</td></tr>
-              <tr><td><kbd>2</kbd></td><td>Pick the <strong>neutral</strong> reply</td></tr>
-              <tr><td><kbd>3</kbd></td><td>Pick the <strong>negative</strong> reply</td></tr>
-              <tr><td><kbd>⌘</kbd> + <kbd>↵</kbd></td><td>Send the picked reply now</td></tr>
-              <tr><td><kbd>D</kbd></td><td>Save the picked reply as a draft (don't send)</td></tr>
-              <tr><td><kbd>S</kbd></td><td>Skip this email (batch mode)</td></tr>
-              <tr><td><kbd>Q</kbd></td><td>End the triage session</td></tr>
+              <tr><td><kbd>1</kbd></td><td x-text="t('sc_positive')"></td></tr>
+              <tr><td><kbd>2</kbd></td><td x-text="t('sc_neutral')"></td></tr>
+              <tr><td><kbd>3</kbd></td><td x-text="t('sc_negative')"></td></tr>
+              <tr><td><kbd>⌘</kbd> + <kbd>↵</kbd></td><td x-text="t('sc_send')"></td></tr>
+              <tr><td><kbd>D</kbd></td><td x-text="t('sc_draft')"></td></tr>
+              <tr><td><kbd>S</kbd></td><td x-text="t('sc_skip')"></td></tr>
+              <tr><td><kbd>Q</kbd></td><td x-text="t('sc_end')"></td></tr>
             </tbody>
           </table>
         </section>
 
         <section class="settings-card" id="privacy">
-          <h2>Privacy &amp; security</h2>
+          <h2 x-text="t('set_privacy')"></h2>
           <ul class="check-list">
             <li><span class="ok">✓</span> Server binds to <code>127.0.0.1</code> by default — only your machine reaches the UI.</li>
             <li><span class="ok">✓</span> IMAP passwords stay in the OS keyring (macOS Keychain / Windows Credential Manager / Secret Service on Linux). Never in <code>accounts.json</code> or <code>.env</code>.</li>
@@ -211,37 +222,37 @@
         </section>
 
         <section class="settings-card" id="storage">
-          <h2>Local data</h2>
-          <p class="muted card-lede">Where imail keeps state on this machine. Everything in this folder is yours — back it up to move accounts to another computer.</p>
+          <h2 x-text="t('set_storage')"></h2>
+          <p class="muted card-lede" x-text="t('set_storage_lede')"></p>
           <dl class="settings-list">
             <div>
-              <dt>Config directory</dt>
+              <dt x-text="t('row_config_dir')"></dt>
               <dd><code x-text="status.config_dir || '~/.config/imail'"></code></dd>
             </div>
             <div>
-              <dt>Account manifest</dt>
+              <dt x-text="t('row_manifest')"></dt>
               <dd><code x-text="(status.config_dir || '~/.config/imail') + '/accounts.json'"></code> — provider kind, hostname, label. No secrets.</dd>
             </div>
             <div>
-              <dt>Reply store</dt>
+              <dt x-text="t('row_reply_store')"></dt>
               <dd><code x-text="(status.config_dir || '~/.config/imail') + '/replies-&lt;account-id&gt;.json'"></code> — pending drafts (cached three-replies) + done (your chosen reply per email).</dd>
             </div>
             <div>
-              <dt>Gmail credentials</dt>
+              <dt x-text="t('row_gmail_creds')"></dt>
               <dd><code x-text="(status.config_dir || '~/.config/imail') + '/credentials.json'"></code> + <code>token-*.json</code> per Gmail account.</dd>
             </div>
           </dl>
         </section>
 
         <section class="settings-card" id="about">
-          <h2>About imail</h2>
+          <h2 x-text="t('set_about')"></h2>
           <dl class="settings-list">
-            <div><dt>Version</dt><dd><code>imail 1.3.2</code> · <a href="https://github.com/jessecu2024/imail/releases" target="_blank" rel="noopener">all releases</a></dd></div>
-            <div><dt>Source code</dt><dd><a href="https://github.com/jessecu2024/imail" target="_blank" rel="noopener">github.com/jessecu2024/imail</a></dd></div>
-            <div><dt>Distribution</dt><dd><a href="https://pypi.org/project/imail-cli/" target="_blank" rel="noopener">PyPI · imail-cli</a> · <a href="https://github.com/jessecu2024/imail/pkgs/container/imail" target="_blank" rel="noopener">GHCR Docker</a> · <a href="https://github.com/jessecu2024/homebrew-tap" target="_blank" rel="noopener">Homebrew tap</a></dd></div>
-            <div><dt>License</dt><dd>AGPL-3.0-or-later · commercial inquiries: <a href="mailto:wzh4464@gmail.com">wzh4464@gmail.com</a></dd></div>
-            <div><dt>Report a bug</dt><dd><a href="https://github.com/jessecu2024/imail/issues/new?template=bug_report.yml" target="_blank" rel="noopener">file an issue</a></dd></div>
-            <div><dt>Request a feature</dt><dd><a href="https://github.com/jessecu2024/imail/issues/new?template=feature_request.yml" target="_blank" rel="noopener">open a request</a></dd></div>
+            <div><dt x-text="t('row_version')"></dt><dd><code>imail 1.3.2</code> · <a href="https://github.com/jessecu2024/imail/releases" target="_blank" rel="noopener">all releases</a></dd></div>
+            <div><dt x-text="t('row_source')"></dt><dd><a href="https://github.com/jessecu2024/imail" target="_blank" rel="noopener">github.com/jessecu2024/imail</a></dd></div>
+            <div><dt x-text="t('row_distribution')"></dt><dd><a href="https://pypi.org/project/imail-cli/" target="_blank" rel="noopener">PyPI · imail-cli</a> · <a href="https://github.com/jessecu2024/imail/pkgs/container/imail" target="_blank" rel="noopener">GHCR Docker</a> · <a href="https://github.com/jessecu2024/homebrew-tap" target="_blank" rel="noopener">Homebrew tap</a></dd></div>
+            <div><dt x-text="t('row_license')"></dt><dd>AGPL-3.0-or-later · commercial inquiries: <a href="mailto:wzh4464@gmail.com">wzh4464@gmail.com</a></dd></div>
+            <div><dt x-text="t('row_report_bug')"></dt><dd><a href="https://github.com/jessecu2024/imail/issues/new?template=bug_report.yml" target="_blank" rel="noopener">file an issue</a></dd></div>
+            <div><dt x-text="t('row_request_feature')"></dt><dd><a href="https://github.com/jessecu2024/imail/issues/new?template=feature_request.yml" target="_blank" rel="noopener">open a request</a></dd></div>
           </dl>
         </section>
       </section>
@@ -333,7 +344,7 @@
             <input
               type="search"
               class="search-input"
-              placeholder="Search this folder…"
+              :placeholder="t('search_placeholder')"
               x-model="searchQuery"
               @keydown.enter="runSearch()"
               @keydown.escape="clearSearch()"
@@ -376,7 +387,7 @@
                     <span class="date" x-text="shortDate(m.date)"></span>
                   </div>
                   <div class="row-subject">
-                    <span x-show="m.replied" class="replied-badge">Replied</span>
+                    <span x-show="m.replied" class="replied-badge" x-text="t('replied')"></span>
                     <span x-text="m.subject"></span>
                   </div>
                 </div>
@@ -478,7 +489,7 @@
               <span x-text="`${triage.processed + 1} of ${triage.processed + triage.remaining + 1}`"></span>
             </template>
             <template x-if="triage.mode === 'single'">
-              <span>single-email reply</span>
+              <span x-text="t('single_email_reply')"></span>
             </template>
           </div>
         </header>
@@ -517,7 +528,7 @@
             <div class="replied-banner">
               <span class="replied-icon">✓</span>
               <div>
-                <strong>Already replied</strong>
+                <strong x-text="t('already_replied')"></strong>
                 <span class="muted">at <span x-text="longDate(triage.current.repliedAt)"></span></span>
                 <p class="muted small">No new draft generated — tokens saved.</p>
               </div>
@@ -525,7 +536,7 @@
             </div>
 
             <article class="saved-reply-card">
-              <header class="saved-reply-header">YOUR SAVED REPLY</header>
+              <header class="saved-reply-header" x-text="t('your_saved_reply')"></header>
               <pre class="saved-reply-body" x-text="triage.current.chosenReply"></pre>
             </article>
           </div>
@@ -555,7 +566,7 @@
             <div class="spam-banner" x-show="triage.current.replies.is_spam">
               <span class="spam-icon">🗑</span>
               <div>
-                <strong>Looks like spam.</strong>
+                <strong x-text="t('looks_like_spam')"></strong>
                 It's been moved to <em>Junk</em> automatically. No reply drafted.
               </div>
               <button class="link" @click="endTriage()">→ next</button>
@@ -567,7 +578,7 @@
                 <button class="reply-card" :class="tone" @click="pickTone(tone)" :disabled="busy">
                   <div class="reply-tone">
                     <span class="key" x-text="tone === 'positive' ? '1' : tone === 'neutral' ? '2' : '3'"></span>
-                    <span class="label" x-text="tone.toUpperCase()"></span>
+                    <span class="label" x-text="t(tone)"></span>
                   </div>
                   <p class="reply-body" x-text="triage.current.replies[tone]"></p>
                 </button>
@@ -576,12 +587,12 @@
 
             <footer class="triage-footer" x-show="!triage.chosen && !triage.current.replies.is_spam">
               <span class="hint">
-                <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> pick a tone &nbsp;·&nbsp;
-                <kbd>S</kbd> skip &nbsp;·&nbsp;
-                <kbd>Q</kbd> end
+                <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> <span x-text="t('pick_a_tone')"></span> &nbsp;·&nbsp;
+                <kbd>S</kbd> <span x-text="t('skip')"></span> &nbsp;·&nbsp;
+                <kbd>Q</kbd> <span x-text="t('end')"></span>
               </span>
               <template x-if="triage.mode === 'batch'">
-                <button class="link" @click="skip()" :disabled="busy">skip</button>
+                <button class="link" @click="skip()" :disabled="busy" x-text="t('skip')"></button>
               </template>
             </footer>
 
@@ -603,7 +614,7 @@
               </div>
 
               <div class="secondary-row">
-                <button class="link" @click="backToPicker()" :disabled="busy">← Pick another tone</button>
+                <button class="link" @click="backToPicker()" :disabled="busy" x-text="t('pick_another_tone')"></button>
                 <span class="sep">·</span>
                 <button class="link" @click="saveDraftOnly()" :disabled="busy">
                   📝 Save as draft only · <kbd>D</kbd>
@@ -617,7 +628,7 @@
 
         <!-- Loading the next email -->
         <template x-if="!triage.done && !triage.current">
-          <div class="loading"><div class="spinner"></div><p>Drafting three replies…</p></div>
+          <div class="loading"><div class="spinner"></div><p x-text="t('drafting')"></p></div>
         </template>
       </section>
 
