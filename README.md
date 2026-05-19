@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="src/imail/static/icon.svg" alt="imail" width="96" />
+  <img src="https://raw.githubusercontent.com/jessecu2024/imail/main/src/imail/static/icon.svg" alt="imail" width="96" />
 </p>
 
 <h1 align="center">imail</h1>
 
 <p align="center">
-  <img src="docs/screenshots/01-shell.png" alt="imail screenshot — three reply tones for the same email" width="100%" />
+  <img src="https://raw.githubusercontent.com/jessecu2024/imail/main/docs/screenshots/01-shell.png" alt="imail screenshot — three reply tones for the same email" width="100%" />
 </p>
 
 <p align="center">

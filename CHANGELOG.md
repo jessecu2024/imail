@@ -9,6 +9,20 @@ Version numbers follow [SemVer](https://semver.org/).
 
 ---
 
+## [1.3.2] — 2026-05-19
+
+### Fixed
+
+- README images now use absolute `raw.githubusercontent.com` URLs so
+  they render on the PyPI project page. The previous relative paths
+  (`src/imail/static/icon.svg`, `docs/screenshots/01-shell.png`)
+  only worked on GitHub, which resolves relative links against the
+  repo root; PyPI renders the README standalone and broke both
+  images. No code changes — version bump only to force PyPI to
+  re-fetch the README.
+
+---
+
 ## [1.3.1] — 2026-05-19
 
 ### Changed
@@ -144,6 +158,7 @@ adds the install-and-distribute pipeline.
 
 History before semver discipline. See `git log` for individual commits.
 
+[1.3.2]: https://github.com/jessecu2024/imail/releases/tag/v1.3.2
 [1.3.1]: https://github.com/jessecu2024/imail/releases/tag/v1.3.1
 [1.3.0]: https://github.com/jessecu2024/imail/releases/tag/v1.3.0
 [1.2.1]: https://github.com/jessecu2024/imail/releases/tag/v1.2.1
