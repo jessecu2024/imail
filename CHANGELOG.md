@@ -9,6 +9,51 @@ Version numbers follow [SemVer](https://semver.org/).
 
 ---
 
+## [1.4.1] — 2026-05-20
+
+A round of fixes contributed by the first external user
+([@wzh4464](https://github.com/wzh4464)) — three real bugs, one UX
+upgrade.
+
+### Fixed
+
+- **`~/.config/imail/.env` is now actually loaded.** The user guide
+  documented dropping `DEEPSEEK_API_KEY` into `~/.config/imail/.env`
+  but the code's bare `load_dotenv()` walks up from
+  `src/imail/config.py`, not from the documented path. Followers of
+  the guide ended up with `llm_configured: false` after every
+  restart. `config.py` now resolves `.env` from CWD then from the
+  config dir (honouring `IMAIL_CONFIG_DIR`); CWD wins on conflict.
+- **Salutation no longer addresses brands as people.** Replies to
+  institutional senders (`Japan Visa Service Desk <…>`, `HSBC <…>`,
+  `sourcery-ai[bot]`, bare `no-reply@…`) opened with `Dear Japan,`
+  / `Dear HSBC,` / `Dear There,`. The new `build_salutation`
+  detects institutional senders by local-part / display-name
+  keywords, derives a brand from the email domain (with TLD and
+  sub-domain stripping), and opens `Dear <Brand> Team,`. Acronyms
+  preserved (`HSBC` stays uppercase); display names with `Team`,
+  `Hong Kong`, `Limited` suffixes are normalised.
+- **Gmail OAuth scope docs match reality.** The README,
+  `docs/gmail-setup.md`, and the Settings → Privacy panel all
+  claimed "no `gmail.send` scope is requested." The code actually
+  requests four scopes including `gmail.send` (used by triage's
+  `⌘↵ Send` and the new compose view's Send button). Every site
+  now lists the four scopes explicitly and explains how to drop
+  `gmail.send` if the user prefers draft-only.
+
+### Added
+
+- **The reply model now reads quoted conversation history.** A new
+  `CONVERSATION HISTORY` section in the system prompt tells the
+  model to look at quoted earlier exchanges (`>`, `From:`, `Sent:`,
+  `On <date> … wrote:`) and avoid re-promising actions the user
+  already completed in a prior reply, re-asking for info already
+  supplied, or inventing numbers / dates / names. Same JSON output
+  shape — purely a prompt-content upgrade. Cost impact: ~700 extra
+  cached input tokens, well under \$0.0001 per email.
+
+---
+
 ## [1.4.0] — 2026-05-20
 
 A big visual + UX overhaul. Same install command (`uv tool install
@@ -270,6 +315,7 @@ adds the install-and-distribute pipeline.
 
 History before semver discipline. See `git log` for individual commits.
 
+[1.4.1]: https://github.com/jessecu2024/imail/releases/tag/v1.4.1
 [1.4.0]: https://github.com/jessecu2024/imail/releases/tag/v1.4.0
 [1.3.2]: https://github.com/jessecu2024/imail/releases/tag/v1.3.2
 [1.3.1]: https://github.com/jessecu2024/imail/releases/tag/v1.3.1

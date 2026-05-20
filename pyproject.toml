@@ -1,6 +1,6 @@
 [project]
 name = "imail-cli"
-version = "1.4.0"
+version = "1.4.1"
 description = "Inbox triage as a local app: log in to Gmail / Outlook / 163 and clear emails with 3-version LLM-drafted replies (DeepSeek-powered)."
 readme = "README.md"
 requires-python = ">=3.11"
