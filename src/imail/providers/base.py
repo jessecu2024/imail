@@ -26,6 +26,7 @@ class EmailMsg:
     body: str  # best-effort plain-text body — may be empty in list mode
     date: str = ""  # RFC822 Date header, raw string
     unread: bool = False  # only meaningful for inbox listings
+    flagged: bool = False  # IMAP \Flagged / Gmail STARRED — user-set star
 
 
 @runtime_checkable
@@ -41,6 +42,9 @@ class MailProvider(Protocol):
 
     def fetch_message(self, kind: FolderKind, message_id: str) -> EmailMsg:
         """Return a single message with its full body."""
+
+    def set_flagged(self, kind: FolderKind, message_id: str, flagged: bool) -> None:
+        """Toggle the IMAP \\Flagged / Gmail STARRED flag for a message."""
 
     def delete_message(self, kind: FolderKind, message_id: str) -> None:
         """Delete a message in the given folder. Mainly for drafts."""

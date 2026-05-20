@@ -361,6 +361,7 @@ class MessageSummary(BaseModel):
     date: str
     unread: bool
     replied: bool = False  # inbox-only: true when this message is in the local "done" set
+    flagged: bool = False  # IMAP \Flagged / Gmail STARRED — user-set star
 
 
 class MessageDetail(BaseModel):
@@ -515,6 +516,7 @@ def list_folder(
             date=m.date,
             unread=m.unread,
             replied=(m.id in handled),
+            flagged=m.flagged,
         )
         for m in msgs
     ]
@@ -658,6 +660,7 @@ def search_folder(
             subject=m.subject,
             date=m.date,
             unread=m.unread,
+            flagged=m.flagged,
         )
         for m in msgs
     ]
@@ -677,6 +680,30 @@ def edit_draft(account_id: str, message_id: str, req: EditDraftRequest) -> dict[
         raise HTTPException(502, str(exc)) from exc
     _body_drop(account_id, "drafts", message_id)
     return {"draft_id": new_id}
+
+
+class FlagRequest(BaseModel):
+    flagged: bool
+
+
+@app.post("/api/messages/{account_id}/{kind}/{message_id}/flag")
+def set_flag(
+    account_id: str,
+    kind: Literal["inbox", "drafts", "sent", "junk"],
+    message_id: str,
+    req: FlagRequest,
+) -> dict[str, bool]:
+    """Toggle the IMAP \\Flagged / Gmail STARRED flag on a message."""
+    if message_id.startswith(_LOCAL_SENT_PREFIX):
+        # Synthetic local rows aren't on the server; flagging them is a no-op.
+        # Return ok so the frontend's optimistic update isn't reverted.
+        return {"ok": True, "flagged": req.flagged}
+    try:
+        with use_provider(account_id) as provider:
+            provider.set_flagged(kind, message_id, req.flagged)
+    except ProviderError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {"ok": True, "flagged": req.flagged}
 
 
 @app.post("/api/messages/{account_id}/junk/{message_id}/restore")
@@ -905,6 +932,14 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
                 logger.info("Spam-moved on click: %s/%s", req.account_id, req.message_id)
         elif req.kind == "inbox" and reply_store is not None:
             reply_store.put_pending(req.message_id, email_msg, replies)
+
+    # Clicking through to triage is a "read" event — flip the IMAP \Seen
+    # flag so other clients (163 webmail, phone) see the same state as
+    # the frontend optimistically does. Best-effort: a failed mark_read
+    # is non-fatal (some folders refuse STORE on idle connections).
+    if req.kind == "inbox":
+        with contextlib.suppress(Exception):
+            provider.mark_read(email_msg)
 
     _session = _Session(account=account, provider=provider, generator=generator)
     _session.queue = []  # empty — no auto-advance after the user picks

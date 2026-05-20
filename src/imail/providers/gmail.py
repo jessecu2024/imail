@@ -207,6 +207,11 @@ class GmailProvider:
             body={"removeLabelIds": ["INBOX", "UNREAD"]},
         ).execute()
 
+    def set_flagged(self, kind: FolderKind, message_id: str, flagged: bool) -> None:
+        # Gmail's "star" maps to the system STARRED label.
+        body = {"addLabelIds": ["STARRED"]} if flagged else {"removeLabelIds": ["STARRED"]}
+        self._service.users().messages().modify(userId="me", id=message_id, body=body).execute()
+
     def close(self) -> None:
         # The Discovery client holds no long-lived sockets.
         return None
@@ -262,7 +267,8 @@ class GmailProvider:
             .execute()
         )
         headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
-        is_unread = "UNREAD" in (msg.get("labelIds") or []) if unread_label else False
+        label_ids = msg.get("labelIds") or []
+        is_unread = "UNREAD" in label_ids if unread_label else False
         return EmailMsg(
             id=msg["id"],
             thread_id=msg.get("threadId", msg["id"]),
@@ -272,6 +278,7 @@ class GmailProvider:
             body="",
             date=headers.get("date", ""),
             unread=is_unread,
+            flagged="STARRED" in label_ids,
         )
 
     def _parse_full_message(self, msg: dict[str, Any]) -> EmailMsg:

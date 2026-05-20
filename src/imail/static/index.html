@@ -379,7 +379,7 @@
         <ul class="message-list">
           <template x-for="m in messageList" :key="m.id">
             <li>
-              <button class="message-row" :class="{ unread: m.unread, replied: m.replied }" @click="openMessage(m)">
+              <button class="message-row" :class="{ unread: m.unread, replied: m.replied, flagged: m.flagged }" @click="openMessage(m)">
                 <span class="avatar" :style="`background:${senderColor(m.sender)}`" x-text="senderInitial(m.sender)"></span>
                 <div class="row-body">
                   <div class="row-top">
@@ -391,15 +391,31 @@
                     <span x-text="m.subject"></span>
                   </div>
                 </div>
-                <span
-                  class="row-delete"
-                  role="button"
-                  :title="rowDeleteTitle(m)"
-                  @click.stop="deleteFromList(m)"
-                  @keydown.enter.stop.prevent="deleteFromList(m)"
-                  @keydown.space.stop.prevent="deleteFromList(m)"
-                  tabindex="0"
-                >×</span>
+                <span class="row-actions">
+                  <span
+                    class="row-flag"
+                    :class="{ on: m.flagged }"
+                    role="button"
+                    :title="m.flagged ? 'Unflag' : 'Flag'"
+                    @click.stop="toggleFlag(m)"
+                    @keydown.enter.stop.prevent="toggleFlag(m)"
+                    @keydown.space.stop.prevent="toggleFlag(m)"
+                    tabindex="0"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M10 1.6l2.6 5.3 5.9.85-4.25 4.15 1 5.85L10 14.97l-5.25 2.78 1-5.85L1.5 7.75l5.9-.85L10 1.6z"/>
+                    </svg>
+                  </span>
+                  <span
+                    class="row-delete"
+                    role="button"
+                    :title="rowDeleteTitle(m)"
+                    @click.stop="deleteFromList(m)"
+                    @keydown.enter.stop.prevent="deleteFromList(m)"
+                    @keydown.space.stop.prevent="deleteFromList(m)"
+                    tabindex="0"
+                  >×</span>
+                </span>
               </button>
             </li>
           </template>

@@ -312,11 +312,13 @@ body {
 .folder-link.active .folder-icon { color: var(--accent); }
 .folder-link.danger .folder-icon { color: var(--text-dim); }
 
-/* Count badge — small pill at the end of a folder link, Gmail-style. */
+/* Count badge — small pill at the end of a folder link. Red, because
+   it means "still requires attention" and pairs visually with the
+   red unread-dot on the row itself. */
 .count-badge {
   margin-left: auto;
   padding: 0.05rem 0.5rem;
-  background: var(--accent);
+  background: var(--warn);
   color: #ffffff;
   border-radius: 999px;
   font-size: 0.72rem;
@@ -325,29 +327,47 @@ body {
   text-align: center;
 }
 
-/* Small inline × delete in each list row. Revealed on row hover so it
-   doesn't compete with the row's primary "open this email" affordance. */
-.message-row { position: relative; padding-right: 2.4rem; }
-.row-delete {
+/* Per-row action cluster (flag + delete), anchored to the right edge.
+   Visible on hover so they don't compete with the row's open-the-email
+   affordance — except the flag button stays visible when already
+   flagged so the user can see what's starred at a glance. */
+.message-row { position: relative; padding-right: 4.6rem; }
+.row-actions {
   position: absolute;
   top: 50%;
-  right: 0.6rem;
+  right: 0.5rem;
   transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.row-flag, .row-delete {
   width: 1.8rem;
   height: 1.8rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  font-size: 1.1rem;
   line-height: 1;
   color: var(--text-soft);
   opacity: 0;
   transition: opacity 80ms ease, background 100ms ease, color 100ms ease;
   cursor: pointer;
 }
+.message-row:hover .row-flag,
 .message-row:hover .row-delete,
+.row-flag:focus-visible,
 .row-delete:focus-visible { opacity: 1; }
+
+/* Star icon styling. Always visible (full opacity) when the message is
+   already flagged, so the user can see their flags without hovering. */
+.row-flag svg { width: 0.95rem; height: 0.95rem; }
+.row-flag:hover { background: rgba(245, 158, 11, 0.18); color: var(--warn); }
+.row-flag.on { opacity: 1; color: #F59E0B; }
+.row-flag.on svg { filter: drop-shadow(0 0 1px rgba(245, 158, 11, 0.4)); }
+
+/* × delete on hover red. */
+.row-delete { font-size: 1.1rem; }
 .row-delete:hover {
   background: rgba(248, 113, 113, 0.18);
   color: var(--neg);

@@ -604,6 +604,17 @@ function app() {
       this._saveCachedList(this.selectedAccount, "inbox", this.messageList);
     },
 
+    _markReadInCachedInbox(messageId) {
+      // Drop the unread flag (and the red dot + count-badge contribution)
+      // for a row as soon as the user clicks it. Server-side mark_read
+      // runs in /api/triage/single so the IMAP \Seen flag also flips.
+      if (!this.selectedAccount) return;
+      this.messageList = this.messageList.map((m) =>
+        m.id === messageId ? { ...m, unread: false } : m,
+      );
+      this._saveCachedList(this.selectedAccount, "inbox", this.messageList);
+    },
+
     async openMessage(m) {
       // For inbox: skip the read-only view and go straight to single-email
       // triage so replies are drafted automatically while the user is reading.
@@ -682,6 +693,34 @@ function app() {
       if (f === "junk") return this.deleteJunk();
       if (f === "sent") return this.deleteSentMessage();
       if (f === "inbox") return this.deleteSelectedInbox();
+    },
+
+    /* ---------- Flag: toggle the IMAP \Flagged / Gmail STARRED bit ---------- */
+    async toggleFlag(m) {
+      if (!this.selectedAccount || !this.selectedFolder) return;
+      // Optimistic: flip immediately, revert on server error.
+      const previous = !!m.flagged;
+      const desired = !previous;
+      this.messageList = this.messageList.map((x) =>
+        x.id === m.id ? { ...x, flagged: desired } : x,
+      );
+      this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/${this.selectedFolder}/${encodeURIComponent(m.id)}/flag`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ flagged: desired }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+      } catch (e) {
+        // Revert.
+        this.messageList = this.messageList.map((x) =>
+          x.id === m.id ? { ...x, flagged: previous } : x,
+        );
+        this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+        this.message = "Error: " + e.message;
+      }
     },
 
     /* ---------- Delete: from list row (no need to open the email) ---------- */
@@ -1030,6 +1069,13 @@ function app() {
       if (!this.selectedAccount) return;
       this._resetTriage("single");
       this.view = "triage";
+      // Opening the email *is* "reading" it — drop the unread flag in
+      // the cached list right away so the red dot + count badge update
+      // without waiting for the next folder refresh. The server-side
+      // \Seen flag is set in /api/triage/single (see server.py).
+      if (this.selectedFolder === "inbox") {
+        this._markReadInCachedInbox(messageId);
+      }
       try {
         const res = await fetch("/api/triage/single", {
           method: "POST",

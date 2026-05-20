@@ -245,6 +245,17 @@ class ImapProvider:
         conn.select("INBOX")
         conn.uid("STORE", email_msg.id, "+FLAGS", "(\\Seen)")
 
+    def set_flagged(self, kind: FolderKind, message_id: str, flagged: bool) -> None:
+        """Toggle the IMAP \\Flagged flag (Apple Mail / Outlook "flag",
+        Gmail's "starred"). The same UID can be flagged in any folder."""
+        conn = self._ensure_connected()
+        folder = self._get_folder(kind, conn)
+        typ, _ = conn.select(folder, readonly=False)
+        if typ != "OK":
+            raise ProviderError(f"Could not select {folder} to toggle flag.")
+        op = "+FLAGS" if flagged else "-FLAGS"
+        conn.uid("STORE", message_id, op, "(\\Flagged)")
+
     def archive(self, email_msg: EmailMsg) -> None:
         # IMAP "archive" varies. Simplest portable behavior: set \Seen + remove
         # from INBOX by EXPUNGEing after \Deleted, but that destroys the message.
@@ -682,6 +693,7 @@ def _parse_envelope_list(fetched: Sequence[object]) -> list[EmailMsg]:
             continue
         flags = _extract_flags(envelope_header)
         unread = "\\Seen" not in flags
+        flagged = "\\Flagged" in flags
 
         msg: Message = email.message_from_bytes(header_bytes, policy=email.policy.default)
         subject = _decode_header_safe(msg.get("Subject", "(no subject)"))
@@ -697,6 +709,7 @@ def _parse_envelope_list(fetched: Sequence[object]) -> list[EmailMsg]:
                 body="",
                 date=date,
                 unread=unread,
+                flagged=flagged,
             )
         )
     return messages
