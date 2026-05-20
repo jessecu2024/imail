@@ -1,8 +1,10 @@
 """Configuration & secrets loading.
 
 Resolution order for paths and keys:
-1. Environment variable (or `.env` in the project root).
-2. Sensible default under `~/.config/imail/`.
+1. Environment variable (or ``.env`` in the current working directory).
+2. ``.env`` under ``~/.config/imail/`` (the location documented in the
+   user guide — same directory we use for accounts, tokens, replies).
+3. Sensible default under ``~/.config/imail/``.
 """
 
 from __future__ import annotations
@@ -13,11 +15,37 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "imail"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-chat"
+
+
+def _load_dotenv_files() -> None:
+    """Load ``.env`` from CWD, then from the config dir.
+
+    CWD is checked first so a developer running ``imail`` from a checkout
+    can override anything in the user-level config. ``load_dotenv``
+    respects ``override=False`` (the default), so the second call only
+    fills in keys that CWD's ``.env`` (or the surrounding shell) left
+    blank.
+
+    The user guide (``docs/user-guide-zh.md``) documents
+    ``~/.config/imail/.env`` as the place to put ``DEEPSEEK_API_KEY``,
+    so we honour that path explicitly instead of forcing the user to
+    start ``imail`` from a specific working directory.
+    """
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.is_file():
+        load_dotenv(cwd_env)
+
+    config_dir_env = os.environ.get("IMAIL_CONFIG_DIR")
+    config_dir = Path(config_dir_env) if config_dir_env else DEFAULT_CONFIG_DIR
+    config_env = config_dir / ".env"
+    if config_env.is_file():
+        load_dotenv(config_env)
+
+
+_load_dotenv_files()
 
 
 @dataclass(frozen=True)
