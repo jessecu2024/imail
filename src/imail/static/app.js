@@ -726,6 +726,37 @@ function app() {
       setTimeout(() => { if (this.message.startsWith("✦")) this.message = ""; }, 2500);
     },
 
+    async toggleFlagTriage() {
+      // Toolbar Flag inside the triage view — operates on the email
+      // currently being triaged (triage.current).
+      if (!this.triage.current || !this.selectedAccount) return;
+      const email = this.triage.current.email;
+      const previous = !!this.triage.current.flagged;
+      const next = !previous;
+      this.triage.current.flagged = next;
+      // Mirror to the cached inbox list so the row's flag icon flips.
+      this.messageList = this.messageList.map((x) =>
+        x.id === email.id ? { ...x, flagged: next } : x,
+      );
+      this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/inbox/${encodeURIComponent(email.id)}/flag`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ flagged: next }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+      } catch (e) {
+        this.triage.current.flagged = previous;
+        this.messageList = this.messageList.map((x) =>
+          x.id === email.id ? { ...x, flagged: previous } : x,
+        );
+        this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+        this.message = "Error: " + e.message;
+      }
+    },
+
     async toggleFlagSelected() {
       // Toolbar button → toggle flag on the message currently open in
       // the detail view. Mirrors toggleFlag() but the source is
@@ -1156,6 +1187,7 @@ function app() {
           alreadyReplied: !!data.already_replied,
           chosenReply: data.chosen_reply || "",
           repliedAt: data.replied_at || "",
+          flagged: !!(data.email && data.email.flagged),
         };
         this.triage.remaining = 0;
       } catch (e) {

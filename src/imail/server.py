@@ -362,6 +362,10 @@ class MessageSummary(BaseModel):
     unread: bool
     replied: bool = False  # inbox-only: true when this message is in the local "done" set
     flagged: bool = False  # IMAP \Flagged / Gmail STARRED — user-set star
+    # For rows surfaced inside the cross-folder Flagged virtual view,
+    # tells the frontend which real folder the row lives in so operations
+    # (delete, flag, open) route to the correct backend kind.
+    source_kind: str = ""
 
 
 class MessageDetail(BaseModel):
@@ -380,7 +384,7 @@ class MessageDetail(BaseModel):
 class TriageNextResponse(BaseModel):
     done: bool
     remaining: int
-    email: dict[str, str | int] | None = None
+    email: dict[str, str | int | bool] | None = None
     replies: ReplyTrio | None = None
     # When the user reopens an already-handled inbox message we don't draft
     # three new replies — we surface the one they chose last time instead.
@@ -482,22 +486,60 @@ def list_folder(
     kind: Literal["inbox", "drafts", "sent", "junk", "flagged"],
     background_tasks: BackgroundTasks,
 ) -> list[MessageSummary]:
-    # `flagged` is a virtual folder — pulls the inbox listing and filters
-    # to messages the user has flagged (\\Flagged on IMAP, STARRED on
-    # Gmail). Same shape as a normal listing so the SPA renders it via
-    # the existing code path.
+    # `flagged` is a cross-folder virtual view — pulls each "real" folder,
+    # filters to messages with the \\Flagged / STARRED bit set, then
+    # concatenates. Same shape as a normal listing so the SPA renders it
+    # through the existing code path. Apple Mail / Outlook do this too —
+    # a flagged email in Sent should be findable from the Flagged
+    # mailbox without having to remember which folder it lives in.
     actual_kind: Literal["inbox", "drafts", "sent", "junk"] = (
         "inbox" if kind == "flagged" else kind
     )
 
-    try:
-        with use_provider(account_id) as provider:
-            msgs = provider.list_folder(actual_kind, limit=100 if kind == "flagged" else 50)
-    except ProviderError as exc:
-        raise HTTPException(502, str(exc)) from exc
-
     if kind == "flagged":
-        msgs = [m for m in msgs if m.flagged]
+        msgs: list[EmailMsg] = []
+        # Track each message's source folder so the frontend knows which
+        # backend kind to route operations to (delete/flag/open).
+        source_kinds: dict[str, str] = {}
+        try:
+            with use_provider(account_id) as provider:
+                for sub_kind in ("inbox", "sent", "drafts", "junk"):
+                    try:
+                        for m in provider.list_folder(sub_kind, limit=100):
+                            if m.flagged:
+                                msgs.append(m)
+                                source_kinds[m.id] = sub_kind
+                    except ProviderError as exc:
+                        logger.warning("flagged: list_folder %s failed: %s", sub_kind, exc)
+        except ProviderError as exc:
+            raise HTTPException(502, str(exc)) from exc
+
+        # Also include locally-cached "I replied to this" entries the user
+        # flagged. These live only in the reply store — no IMAP analogue —
+        # so the cross-folder scan above wouldn't see them otherwise.
+        for d in _store_for(account_id).done_entries():
+            if d.flagged:
+                synthetic_id = f"{_LOCAL_SENT_PREFIX}{d.message_id}"
+                msgs.append(
+                    EmailMsg(
+                        id=synthetic_id,
+                        thread_id=synthetic_id,
+                        sender=d.sender or "(unknown)",
+                        subject=_reply_subject(d.subject),
+                        snippet=d.body[:200] if d.body else "",
+                        body=d.body,
+                        date=d.replied_at,
+                        unread=False,
+                        flagged=True,
+                    )
+                )
+                source_kinds[synthetic_id] = "sent"
+    else:
+        try:
+            with use_provider(account_id) as provider:
+                msgs = provider.list_folder(actual_kind, limit=50)
+        except ProviderError as exc:
+            raise HTTPException(502, str(exc)) from exc
 
     # Inbox: tag every message we've already handled so the UI can colour
     # those rows differently. The prefetch skips done rows on its own — we
@@ -529,6 +571,7 @@ def list_folder(
             unread=m.unread,
             replied=(m.id in handled),
             flagged=m.flagged,
+            source_kind=(source_kinds.get(m.id, "") if kind == "flagged" else ""),
         )
         for m in msgs
     ]
@@ -724,8 +767,11 @@ def set_flag(
 ) -> dict[str, bool]:
     """Toggle the IMAP \\Flagged / Gmail STARRED flag on a message."""
     if message_id.startswith(_LOCAL_SENT_PREFIX):
-        # Synthetic local rows aren't on the server; flagging them is a no-op.
-        # Return ok so the frontend's optimistic update isn't reverted.
+        # Synthetic local rows aren't on the IMAP server. Persist the flag
+        # state inside the local reply store so the Flagged virtual folder
+        # can list them and so the state survives a restart.
+        original_id = message_id[len(_LOCAL_SENT_PREFIX) :]
+        _store_for(account_id).set_done_flagged(original_id, req.flagged)
         return {"ok": True, "flagged": req.flagged}
     provider_kind: Literal["inbox", "drafts", "sent", "junk"] = (
         "inbox" if kind == "flagged" else kind
@@ -813,6 +859,7 @@ def triage_next() -> TriageNextResponse:
             "subject": email_msg.subject,
             "body": email_msg.body or email_msg.snippet,
             "date": email_msg.date,
+            "flagged": email_msg.flagged,
         },
         replies=replies,
     )
@@ -924,6 +971,7 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
                     "subject": replayed.subject,
                     "body": replayed.body or "(original body was not saved)",
                     "date": replayed.date,
+                    "flagged": False,
                 },
                 replies=None,
                 already_replied=True,
@@ -991,6 +1039,7 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
             "subject": email_msg.subject,
             "body": email_msg.body or email_msg.snippet,
             "date": email_msg.date,
+            "flagged": email_msg.flagged,
         },
         replies=replies,
     )

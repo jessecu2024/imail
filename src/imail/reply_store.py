@@ -60,6 +60,7 @@ class DoneEntry:
     chosen_reply: str
     replied_at: str  # ISO-8601 UTC, second precision
     body: str = ""
+    flagged: bool = False  # user-set red flag on the local Sent row
 
 
 class ReplyStore:
@@ -135,6 +136,29 @@ class ReplyStore:
         with self._lock:
             self._ensure_loaded()
             return self._done.get(message_id)
+
+    def set_done_flagged(self, message_id: str, flagged: bool) -> bool:
+        """Toggle the user-set red flag on a `local:` Sent row. Returns
+        True if the entry existed and the state changed."""
+        with self._lock:
+            self._ensure_loaded()
+            entry = self._done.get(message_id)
+            if entry is None or entry.flagged == flagged:
+                return False
+            # Replace the frozen dataclass with a new copy carrying the
+            # updated flag bit.
+            self._done[message_id] = DoneEntry(
+                message_id=entry.message_id,
+                sender=entry.sender,
+                subject=entry.subject,
+                date=entry.date,
+                chosen_reply=entry.chosen_reply,
+                replied_at=entry.replied_at,
+                body=entry.body,
+                flagged=flagged,
+            )
+            self._persist()
+            return True
 
     def drop_done(self, message_id: str) -> bool:
         """Forget a done entry (the saved-reply record). Returns True if the
@@ -234,6 +258,7 @@ class ReplyStore:
                     "chosen_reply": d.chosen_reply,
                     "replied_at": d.replied_at,
                     "body": d.body,
+                    "flagged": d.flagged,
                 }
                 for mid, d in self._done.items()
             },

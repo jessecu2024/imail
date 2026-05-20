@@ -557,6 +557,37 @@
 
         <header class="pane-header">
           <button class="link-back" @click="endTriage()">← <span x-text="folderTitle('inbox')"></span></button>
+          <!-- Same toolbar shape as the message-detail view: Reply / Reply
+               all / Forward / Flag / Delete. The Reply trio is conceptually
+               redundant in triage (the 3-tone picker IS reply), but
+               surfacing the buttons keeps the affordance consistent across
+               every email view in the app — they map to the existing
+               "coming soon" toast for now. -->
+          <template x-if="triage.current">
+            <div class="action-toolbar">
+              <button class="toolbar-btn" :title="t('reply')" @click="composeReply('reply')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 015 5v3"/></svg>
+                <span x-text="t('reply')"></span>
+              </button>
+              <button class="toolbar-btn" :title="t('reply_all')" @click="composeReply('reply_all')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14L2 9l5-5"/><path d="M12 14L7 9l5-5"/><path d="M7 9h9a5 5 0 015 5v3"/></svg>
+                <span x-text="t('reply_all')"></span>
+              </button>
+              <button class="toolbar-btn" :title="t('forward')" @click="composeReply('forward')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 00-5 5v3"/></svg>
+                <span x-text="t('forward')"></span>
+              </button>
+              <span class="toolbar-sep"></span>
+              <button class="toolbar-btn" :class="{ on: triage.current.flagged }" :title="triage.current.flagged ? t('unflag') : t('flag')" @click="toggleFlagTriage()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22V4"/><path d="M5 4h11l-2 4 2 4H5" :fill="triage.current.flagged ? 'currentColor' : 'none'"/></svg>
+                <span x-text="t('flag')"></span>
+              </button>
+              <button class="toolbar-btn danger" :title="t('delete_word')" @click="deleteCurrentInbox()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2"/><path d="M5 6l1 14a2 2 0 002 2h8a2 2 0 002-2l1-14"/><path d="M10 11v6M14 11v6"/></svg>
+                <span x-text="t('delete_word')"></span>
+              </button>
+            </div>
+          </template>
           <div class="triage-meta">
             <template x-if="triage.mode === 'batch'">
               <span x-text="`${triage.processed + 1} of ${triage.processed + triage.remaining + 1}`"></span>
