@@ -70,6 +70,15 @@ const STRINGS = {
     delete_local_record: "Delete local saved-reply record",
     delete_with_sync: "Delete (also removes from server + all devices)",
     replying_to: "In reply to",
+    flag: "Flag",
+    unflag: "Unflag",
+    flagged: "Flagged",
+    reply: "Reply",
+    reply_all: "Reply all",
+    forward: "Forward",
+    delete_word: "Delete",
+    coming_soon: "Coming soon",
+    no_flagged: "No flagged messages. Click the flag icon on any row to add one here.",
     // settings row labels
     row_format: "Format",
     row_signature: "Signature",
@@ -153,6 +162,15 @@ const STRINGS = {
     delete_local_record: "删除本地记录",
     delete_with_sync: "删除(同时从服务器和所有设备删除)",
     replying_to: "回复的原邮件",
+    flag: "加红旗",
+    unflag: "取消红旗",
+    flagged: "已加红旗",
+    reply: "回复",
+    reply_all: "全部回复",
+    forward: "转发",
+    delete_word: "删除",
+    coming_soon: "即将推出",
+    no_flagged: "还没有加红旗的邮件。点任意邮件右侧的旗子图标加进来。",
     row_format: "格式",
     row_signature: "签名",
     row_language: "语言",
@@ -388,10 +406,11 @@ function app() {
 
     folderList(_acct) {
       return [
-        { kind: "inbox",  label: this.t("inbox")  },
-        { kind: "drafts", label: this.t("drafts") },
-        { kind: "sent",   label: this.t("sent")   },
-        { kind: "junk",   label: this.t("junk")   },
+        { kind: "inbox",   label: this.t("inbox")   },
+        { kind: "flagged", label: this.t("flagged") },
+        { kind: "drafts",  label: this.t("drafts")  },
+        { kind: "sent",    label: this.t("sent")    },
+        { kind: "junk",    label: this.t("junk")    },
       ];
     },
 
@@ -400,10 +419,11 @@ function app() {
       // namespace and doesn't render inside <svg>.
       const head = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
       const paths = {
-        inbox:  '<path d="M3 13l2-7h10l2 7"/><path d="M3 13v3a1 1 0 001 1h12a1 1 0 001-1v-3"/><path d="M3 13h4l1 2h4l1-2h4"/>',
-        drafts: '<path d="M13 4l3 3-8 8H5v-3l8-8z"/><path d="M12 5l3 3"/>',
-        sent:   '<path d="M17 3L3 9l7 2 2 7 5-15z"/><path d="M10 11l4-4"/>',
-        junk:   '<path d="M4 6h12"/><path d="M6 6v10a1 1 0 001 1h6a1 1 0 001-1V6"/><path d="M8 6V4h4v2"/>',
+        inbox:   '<path d="M3 13l2-7h10l2 7"/><path d="M3 13v3a1 1 0 001 1h12a1 1 0 001-1v-3"/><path d="M3 13h4l1 2h4l1-2h4"/>',
+        flagged: '<path d="M5 17V3"/><path d="M5 3h9l-1.5 3.5L14 10H5"/>',
+        drafts:  '<path d="M13 4l3 3-8 8H5v-3l8-8z"/><path d="M12 5l3 3"/>',
+        sent:    '<path d="M17 3L3 9l7 2 2 7 5-15z"/><path d="M10 11l4-4"/>',
+        junk:    '<path d="M4 6h12"/><path d="M6 6v10a1 1 0 001 1h6a1 1 0 001-1V6"/><path d="M8 6V4h4v2"/>',
       };
       return head + (paths[kind] || "") + "</svg>";
     },
@@ -616,9 +636,10 @@ function app() {
     },
 
     async openMessage(m) {
-      // For inbox: skip the read-only view and go straight to single-email
-      // triage so replies are drafted automatically while the user is reading.
-      if (this.selectedFolder === "inbox") {
+      // For inbox + flagged (a virtual inbox view): skip the read-only
+      // view and go straight to single-email triage so replies are
+      // drafted automatically while the user is reading.
+      if (this.selectedFolder === "inbox" || this.selectedFolder === "flagged") {
         await this.triageSingle(m.id);
         return;
       }
@@ -693,6 +714,47 @@ function app() {
       if (f === "junk") return this.deleteJunk();
       if (f === "sent") return this.deleteSentMessage();
       if (f === "inbox") return this.deleteSelectedInbox();
+    },
+
+    /* ---------- Toolbar handlers on the message-detail view ---------- */
+    composeReply(_mode) {
+      // Reply / Reply all / Forward aren't built yet — the heavy lift is a
+      // proper compose view + send wiring. Surface a clear "coming soon"
+      // banner for now so the toolbar still feels real and the user
+      // discovers the buttons.
+      this.message = `✦ ${this.t("coming_soon")}`;
+      setTimeout(() => { if (this.message.startsWith("✦")) this.message = ""; }, 2500);
+    },
+
+    async toggleFlagSelected() {
+      // Toolbar button → toggle flag on the message currently open in
+      // the detail view. Mirrors toggleFlag() but the source is
+      // selectedMessage, not a row from the listing.
+      if (!this.selectedMessage || !this.selectedAccount) return;
+      const next = !this.selectedMessage.flagged;
+      const previous = this.selectedMessage.flagged;
+      this.selectedMessage.flagged = next;
+      // Mirror to the cached list too so the row's star icon flips.
+      this.messageList = this.messageList.map((x) =>
+        x.id === this.selectedMessage.id ? { ...x, flagged: next } : x,
+      );
+      this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+      try {
+        const url = `/api/messages/${this.selectedAccount.id}/${this.selectedFolder}/${encodeURIComponent(this.selectedMessage.id)}/flag`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ flagged: next }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+      } catch (e) {
+        this.selectedMessage.flagged = previous;
+        this.messageList = this.messageList.map((x) =>
+          x.id === this.selectedMessage.id ? { ...x, flagged: previous } : x,
+        );
+        this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+        this.message = "Error: " + e.message;
+      }
     },
 
     /* ---------- Flag: toggle the IMAP \Flagged / Gmail STARRED bit ---------- */
@@ -1073,7 +1135,7 @@ function app() {
       // the cached list right away so the red dot + count badge update
       // without waiting for the next folder refresh. The server-side
       // \Seen flag is set in /api/triage/single (see server.py).
-      if (this.selectedFolder === "inbox") {
+      if (this.selectedFolder === "inbox" || this.selectedFolder === "flagged") {
         this._markReadInCachedInbox(messageId);
       }
       try {

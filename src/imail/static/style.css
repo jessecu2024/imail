@@ -312,6 +312,13 @@ body {
 .folder-link.active .folder-icon { color: var(--accent); }
 .folder-link.danger .folder-icon { color: var(--text-dim); }
 
+/* The Flagged virtual folder is always red — flagged emails are red
+   flags everywhere in this UI, even before you select the folder. */
+.folder-link[data-kind="flagged"] .folder-icon { color: var(--neg); }
+.folder-link[data-kind="flagged"].active { background: rgba(220, 38, 38, 0.08); }
+.folder-link[data-kind="flagged"].active .name,
+.folder-link[data-kind="flagged"].active .folder-icon { color: var(--neg); }
+
 /* Count badge — small pill at the end of a folder link. Red, because
    it means "still requires attention" and pairs visually with the
    red unread-dot on the row itself. */
@@ -359,17 +366,24 @@ body {
 .row-flag:focus-visible,
 .row-delete:focus-visible { opacity: 1; }
 
-/* Star icon styling. Always visible (full opacity) when the message is
-   already flagged, so the user can see their flags without hovering. */
-.row-flag svg { width: 0.95rem; height: 0.95rem; }
-.row-flag:hover { background: rgba(245, 158, 11, 0.18); color: var(--warn); }
-.row-flag.on { opacity: 1; color: #F59E0B; }
-.row-flag.on svg { filter: drop-shadow(0 0 1px rgba(245, 158, 11, 0.4)); }
+/* Action buttons sized to read as proper affordances at any DPI. */
+.row-flag, .row-delete {
+  width: 2.1rem;
+  height: 2.1rem;
+}
+.row-flag svg, .row-delete svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
 
-/* × delete on hover red. */
-.row-delete { font-size: 1.1rem; }
+/* Flag icon — always visible when the message is already flagged, so
+   the user can see what's flagged at a glance without hovering. */
+.row-flag:hover { background: rgba(220, 38, 38, 0.12); color: var(--neg); }
+.row-flag.on { opacity: 1; color: var(--neg); }
+
+/* Trash icon — turns red on hover. */
 .row-delete:hover {
-  background: rgba(248, 113, 113, 0.18);
+  background: rgba(220, 38, 38, 0.12);
   color: var(--neg);
 }
 
@@ -1181,6 +1195,44 @@ kbd {
 }
 .check-list code { background: var(--bg-3); padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.82rem; }
 .check-list strong { color: var(--text); }
+
+/* Action toolbar above a message-detail view — Reply / Reply-all /
+   Forward / Flag / Delete. Sits next to the link-back in pane-header. */
+.action-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: auto;
+}
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+.toolbar-btn svg { width: 1.05rem; height: 1.05rem; }
+.toolbar-btn:hover { background: var(--bg-3); color: var(--text); border-color: var(--border); }
+.toolbar-btn.on { color: var(--neg); }
+.toolbar-btn.on svg { color: var(--neg); }
+.toolbar-btn.danger:hover { color: var(--neg); border-color: var(--neg); background: rgba(220, 38, 38, 0.06); }
+.toolbar-sep {
+  width: 1px;
+  height: 1.4rem;
+  background: var(--border);
+  margin: 0 0.3rem;
+}
+.pane-header { display: flex; align-items: center; }
+@media (max-width: 720px) {
+  .toolbar-btn span:not(.dim) { display: none; }
+}
 
 /* "In reply to" card — shows the original incoming email below a reply
    when viewing a local: Sent entry. Gmail-style threaded view. */

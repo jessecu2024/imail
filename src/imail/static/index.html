@@ -71,6 +71,7 @@
               <template x-for="f in folderList(acct)" :key="f.kind">
                 <button
                   class="folder-link"
+                  :data-kind="f.kind"
                   :class="{ active: selectedAccount && selectedAccount.id === acct.id && selectedFolder === f.kind }"
                   @click="openFolder(acct, f.kind)"
                 >
@@ -396,14 +397,16 @@
                     class="row-flag"
                     :class="{ on: m.flagged }"
                     role="button"
-                    :title="m.flagged ? 'Unflag' : 'Flag'"
+                    :title="m.flagged ? t('unflag') : t('flag')"
                     @click.stop="toggleFlag(m)"
                     @keydown.enter.stop.prevent="toggleFlag(m)"
                     @keydown.space.stop.prevent="toggleFlag(m)"
                     tabindex="0"
                   >
-                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path d="M10 1.6l2.6 5.3 5.9.85-4.25 4.15 1 5.85L10 14.97l-5.25 2.78 1-5.85L1.5 7.75l5.9-.85L10 1.6z"/>
+                    <!-- Red flag, Apple Mail / Outlook style. -->
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M5 22V4" />
+                      <path d="M5 4h11l-2 4 2 4H5" :fill="m.flagged ? 'currentColor' : 'none'" />
                     </svg>
                   </span>
                   <span
@@ -414,7 +417,15 @@
                     @keydown.enter.stop.prevent="deleteFromList(m)"
                     @keydown.space.stop.prevent="deleteFromList(m)"
                     tabindex="0"
-                  >×</span>
+                  >
+                    <!-- Trash bin icon (Heroicons/Lucide stroke style). -->
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" />
+                      <path d="M5 6l1 14a2 2 0 002 2h8a2 2 0 002-2l1-14" />
+                      <path d="M10 11v6M14 11v6" />
+                    </svg>
+                  </span>
                 </span>
               </button>
             </li>
@@ -426,6 +437,35 @@
       <section x-show="view === 'message'" class="message-view">
         <header class="pane-header">
           <button class="link-back" @click="backToFolder()">← <span x-text="folderTitle(selectedFolder)"></span></button>
+          <!-- Action toolbar: standard email-app shape (Reply / Reply all /
+               Forward / Flag / Delete). Reply / Reply all / Forward are
+               placeholders today — they show a "Coming soon" toast. Flag
+               and Delete are wired to existing handlers. -->
+          <template x-if="selectedMessage">
+            <div class="action-toolbar">
+              <button class="toolbar-btn" :title="t('reply')" @click="composeReply('reply')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 015 5v3"/></svg>
+                <span x-text="t('reply')"></span>
+              </button>
+              <button class="toolbar-btn" :title="t('reply_all')" @click="composeReply('reply_all')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14L2 9l5-5"/><path d="M12 14L7 9l5-5"/><path d="M7 9h9a5 5 0 015 5v3"/></svg>
+                <span x-text="t('reply_all')"></span>
+              </button>
+              <button class="toolbar-btn" :title="t('forward')" @click="composeReply('forward')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 00-5 5v3"/></svg>
+                <span x-text="t('forward')"></span>
+              </button>
+              <span class="toolbar-sep"></span>
+              <button class="toolbar-btn" :class="{ on: selectedMessage.flagged }" :title="selectedMessage.flagged ? t('unflag') : t('flag')" @click="toggleFlagSelected()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22V4"/><path d="M5 4h11l-2 4 2 4H5" :fill="selectedMessage.flagged ? 'currentColor' : 'none'"/></svg>
+                <span x-text="t('flag')"></span>
+              </button>
+              <button class="toolbar-btn danger" :title="t('delete_word')" @click="deleteCurrent()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2"/><path d="M5 6l1 14a2 2 0 002 2h8a2 2 0 002-2l1-14"/><path d="M10 11v6M14 11v6"/></svg>
+                <span x-text="t('delete_word')"></span>
+              </button>
+            </div>
+          </template>
         </header>
 
         <template x-if="selectedMessage">

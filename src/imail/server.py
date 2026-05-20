@@ -342,7 +342,7 @@ class StartRequest(BaseModel):
 
 class SingleTriageRequest(BaseModel):
     account_id: str
-    kind: Literal["inbox", "drafts", "sent", "junk"] = "inbox"
+    kind: Literal["inbox", "drafts", "sent", "junk", "flagged"] = "inbox"
     message_id: str
 
 
@@ -370,6 +370,7 @@ class MessageDetail(BaseModel):
     subject: str
     body: str
     date: str
+    flagged: bool = False
     # When this row is a locally-cached "I replied to this" entry in Sent,
     # surface the original incoming email below the reply so the user can
     # remember *what* they were replying to. None for regular IMAP rows.
@@ -478,35 +479,46 @@ def delete_account(account_id: str) -> dict[str, bool]:
 @app.get("/api/folders/{account_id}/{kind}", response_model=list[MessageSummary])
 def list_folder(
     account_id: str,
-    kind: Literal["inbox", "drafts", "sent", "junk"],
+    kind: Literal["inbox", "drafts", "sent", "junk", "flagged"],
     background_tasks: BackgroundTasks,
 ) -> list[MessageSummary]:
+    # `flagged` is a virtual folder — pulls the inbox listing and filters
+    # to messages the user has flagged (\\Flagged on IMAP, STARRED on
+    # Gmail). Same shape as a normal listing so the SPA renders it via
+    # the existing code path.
+    actual_kind: Literal["inbox", "drafts", "sent", "junk"] = (
+        "inbox" if kind == "flagged" else kind
+    )
+
     try:
         with use_provider(account_id) as provider:
-            msgs = provider.list_folder(kind, limit=50)
+            msgs = provider.list_folder(actual_kind, limit=100 if kind == "flagged" else 50)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
+
+    if kind == "flagged":
+        msgs = [m for m in msgs if m.flagged]
 
     # Inbox: tag every message we've already handled so the UI can colour
     # those rows differently. The prefetch skips done rows on its own — we
     # don't pay tokens to redraft replies the user has already chosen.
     handled: set[str] = set()
-    if kind == "inbox":
+    if actual_kind == "inbox":
         handled = _store_for(account_id).done_ids()
 
     # Fire-and-forget warm-up:
-    #   - Inbox: full triage prefetch (body + 3 DeepSeek replies + spam-move),
-    #     scoped to messages that aren't already handled.
+    #   - Inbox + Flagged: full triage prefetch (body + 3 DeepSeek replies +
+    #     spam-move), scoped to messages that aren't already handled.
     #   - Sent / Drafts / Junk: just cache bodies for the top N so the first
     #     click is instant.
     if msgs:
-        if kind == "inbox":
+        if actual_kind == "inbox":
             unhandled_ids = [m.id for m in msgs if m.id not in handled]
             if unhandled_ids:
                 background_tasks.add_task(_warm_inbox_cache, account_id, unhandled_ids)
-        else:
+        elif kind != "flagged":
             ids = [m.id for m in msgs]
-            background_tasks.add_task(_warm_folder_bodies, account_id, kind, ids)
+            background_tasks.add_task(_warm_folder_bodies, account_id, actual_kind, ids)
 
     summaries = [
         MessageSummary(
@@ -544,9 +556,16 @@ def list_folder(
 @app.get("/api/messages/{account_id}/{kind}/{message_id}", response_model=MessageDetail)
 def get_message(
     account_id: str,
-    kind: Literal["inbox", "drafts", "sent", "junk"],
+    kind: Literal["inbox", "drafts", "sent", "junk", "flagged"],
     message_id: str,
 ) -> MessageDetail:
+    # "flagged" is a virtual view of inbox — route the actual provider
+    # call through inbox while preserving the API-level kind so the
+    # cache stays partitioned per view.
+    provider_kind: Literal["inbox", "drafts", "sent", "junk"] = (
+        "inbox" if kind == "flagged" else kind
+    )
+
     # Synthetic "Sent" row backed by the local reply store. The IMAP server
     # doesn't know this id; we serve the chosen reply text directly.
     if kind == "sent" and message_id.startswith(_LOCAL_SENT_PREFIX):
@@ -571,25 +590,26 @@ def get_message(
 
     # Cache check first — the background warmup on list_folder usually has
     # already pulled the body for the top messages.
-    cached = _body_get(account_id, kind, message_id)
+    cached = _body_get(account_id, provider_kind, message_id)
     if cached is not None:
-        logger.info("Body cache HIT for %s/%s/%s", account_id, kind, message_id)
+        logger.info("Body cache HIT for %s/%s/%s", account_id, provider_kind, message_id)
         return MessageDetail(
             id=cached.id,
             sender=cached.sender,
             subject=cached.subject,
             body=cached.body,
             date=cached.date,
+            flagged=cached.flagged,
         )
 
     try:
         with use_provider(account_id) as provider:
-            msg = provider.fetch_message(kind, message_id)
+            msg = provider.fetch_message(provider_kind, message_id)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
 
     # Stash for next time so re-opening the same message is instant.
-    _body_put(account_id, kind, message_id, msg)
+    _body_put(account_id, provider_kind, message_id, msg)
 
     return MessageDetail(
         id=msg.id,
@@ -597,13 +617,14 @@ def get_message(
         subject=msg.subject,
         body=msg.body,
         date=msg.date,
+        flagged=msg.flagged,
     )
 
 
 @app.delete("/api/messages/{account_id}/{kind}/{message_id}")
 def delete_message(
     account_id: str,
-    kind: Literal["inbox", "drafts", "sent", "junk"],
+    kind: Literal["inbox", "drafts", "sent", "junk", "flagged"],
     message_id: str,
 ) -> dict[str, bool]:
     """Delete a message everywhere — on the IMAP server (so 163 / other
@@ -621,18 +642,21 @@ def delete_message(
 
     # Real IMAP message. The STORE +Deleted + EXPUNGE in provider.delete_message
     # is what makes the change sync to 163 webmail and any other client logged
-    # into the same mailbox.
+    # into the same mailbox. "flagged" maps to inbox for the actual op.
+    provider_kind: Literal["inbox", "drafts", "sent", "junk"] = (
+        "inbox" if kind == "flagged" else kind
+    )
     try:
         with use_provider(account_id) as provider:
-            provider.delete_message(kind, message_id)
+            provider.delete_message(provider_kind, message_id)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
-    _body_drop(account_id, kind, message_id)
+    _body_drop(account_id, provider_kind, message_id)
 
     # Clear any reply-store record tied to this id — the original email is
     # gone, so the "已回复" badge / pending trio / saved-reply mirror would
     # otherwise dangle.
-    if kind == "inbox":
+    if provider_kind == "inbox":
         store = _store_for(account_id)
         store.drop_done(message_id)
         store.drop_pending(message_id)
@@ -645,12 +669,17 @@ def delete_message(
 @app.get("/api/search/{account_id}/{kind}", response_model=list[MessageSummary])
 def search_folder(
     account_id: str,
-    kind: Literal["inbox", "drafts", "sent", "junk"],
+    kind: Literal["inbox", "drafts", "sent", "junk", "flagged"],
     q: str = "",
 ) -> list[MessageSummary]:
+    provider_kind: Literal["inbox", "drafts", "sent", "junk"] = (
+        "inbox" if kind == "flagged" else kind
+    )
     try:
         with use_provider(account_id) as provider:
-            msgs = provider.search(kind, q, limit=50)
+            msgs = provider.search(provider_kind, q, limit=50)
+            if kind == "flagged":
+                msgs = [m for m in msgs if m.flagged]
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
     return [
@@ -689,7 +718,7 @@ class FlagRequest(BaseModel):
 @app.post("/api/messages/{account_id}/{kind}/{message_id}/flag")
 def set_flag(
     account_id: str,
-    kind: Literal["inbox", "drafts", "sent", "junk"],
+    kind: Literal["inbox", "drafts", "sent", "junk", "flagged"],
     message_id: str,
     req: FlagRequest,
 ) -> dict[str, bool]:
@@ -698,9 +727,12 @@ def set_flag(
         # Synthetic local rows aren't on the server; flagging them is a no-op.
         # Return ok so the frontend's optimistic update isn't reverted.
         return {"ok": True, "flagged": req.flagged}
+    provider_kind: Literal["inbox", "drafts", "sent", "junk"] = (
+        "inbox" if kind == "flagged" else kind
+    )
     try:
         with use_provider(account_id) as provider:
-            provider.set_flagged(kind, message_id, req.flagged)
+            provider.set_flagged(provider_kind, message_id, req.flagged)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
     return {"ok": True, "flagged": req.flagged}
@@ -844,7 +876,12 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
     # Cache hit? Skip both the IMAP fetch_message AND the DeepSeek call —
     # we already have everything from the prefetch background task (or a
     # prior session, since the store is on disk).
-    reply_store = _store_for(req.account_id) if req.kind == "inbox" else None
+    # "flagged" is a virtual view of inbox — treat it as inbox for triage.
+    is_inbox_like = req.kind in ("inbox", "flagged")
+    triage_kind: Literal["inbox", "drafts", "sent", "junk"] = (
+        "inbox" if req.kind == "flagged" else req.kind
+    )
+    reply_store = _store_for(req.account_id) if is_inbox_like else None
 
     # If the user is reopening an already-handled inbox message, return the
     # original body + their saved reply with no DeepSeek call at all. We
@@ -915,7 +952,7 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
         )
     else:
         try:
-            email_msg = provider.fetch_message(req.kind, req.message_id)
+            email_msg = provider.fetch_message(triage_kind, req.message_id)
         except ProviderError as exc:
             provider.close()
             raise HTTPException(502, str(exc)) from exc
@@ -926,18 +963,18 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
             raise HTTPException(502, f"Reply generation failed: {exc}") from exc
 
         # If live classification flags this as spam, push it out of inbox now.
-        if req.kind == "inbox" and replies.is_spam:
+        if is_inbox_like and replies.is_spam:
             with contextlib.suppress(ProviderError):
                 provider.move_message("inbox", "junk", req.message_id)
                 logger.info("Spam-moved on click: %s/%s", req.account_id, req.message_id)
-        elif req.kind == "inbox" and reply_store is not None:
+        elif is_inbox_like and reply_store is not None:
             reply_store.put_pending(req.message_id, email_msg, replies)
 
     # Clicking through to triage is a "read" event — flip the IMAP \Seen
     # flag so other clients (163 webmail, phone) see the same state as
     # the frontend optimistically does. Best-effort: a failed mark_read
     # is non-fatal (some folders refuse STORE on idle connections).
-    if req.kind == "inbox":
+    if is_inbox_like:
         with contextlib.suppress(Exception):
             provider.mark_read(email_msg)
 
