@@ -267,6 +267,15 @@ body {
 }
 .message-row.unread .row-top { color: var(--text); }
 .message-row .from { font-weight: 600; }
+/* "→" prefix on rows that represent a sent message — disambiguates the
+   row from an incoming email at a glance, since the listing's sender
+   slot shows the recipient's name (Apple Mail / Gmail / Outlook all
+   do this in their Sent folders). */
+.from-prefix {
+  color: var(--text-soft);
+  font-weight: 500;
+  margin-right: 0.05rem;
+}
 .message-row .date { color: var(--text-dim); font-size: 0.8rem; }
 .message-row .row-subject {
   font-size: 0.95rem;

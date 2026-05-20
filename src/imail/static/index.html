@@ -384,7 +384,9 @@
                 <span class="avatar" :style="`background:${senderColor(m.sender)}`" x-text="senderInitial(m.sender)"></span>
                 <div class="row-body">
                   <div class="row-top">
-                    <span class="from" x-text="m.sender"></span>
+                    <span class="from">
+                      <span x-show="isSentContext(m)" class="from-prefix">→&nbsp;</span><span x-text="m.sender"></span>
+                    </span>
                     <span class="date" x-text="shortDate(m.date)"></span>
                   </div>
                   <div class="row-subject">

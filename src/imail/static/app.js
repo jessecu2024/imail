@@ -635,27 +635,54 @@ function app() {
       this._saveCachedList(this.selectedAccount, "inbox", this.messageList);
     },
 
+    /* Effective folder for per-row operations. In the Flagged virtual
+       view, rows can come from any of the four real folders — m.source_kind
+       carries the original. Outside Flagged, source_kind is empty and
+       the selectedFolder is the source. */
+    rowKind(m) {
+      return (m && m.source_kind) || this.selectedFolder;
+    },
+
+    /* True when this row represents a sent message — for the visual "→"
+       prefix that disambiguates it from an inbox row at a glance. */
+    isSentContext(m) {
+      return this.rowKind(m) === "sent";
+    },
+
     async openMessage(m) {
-      // For inbox + flagged (a virtual inbox view): skip the read-only
-      // view and go straight to single-email triage so replies are
-      // drafted automatically while the user is reading.
-      if (this.selectedFolder === "inbox" || this.selectedFolder === "flagged") {
+      const effective = this.rowKind(m);
+      // For inbox rows: skip the read-only view and go straight to
+      // single-email triage so replies are drafted automatically while
+      // the user is reading. Flagged rows that came from inbox follow
+      // the same path; flagged rows from sent/drafts/junk drop through
+      // to the message-detail flow below.
+      if (effective === "inbox") {
+        // Triage uses this.selectedFolder for the API kind — temporarily
+        // override so the request goes against /inbox/<id> even when the
+        // user is currently viewing the Flagged virtual folder.
+        const previous = this.selectedFolder;
+        this.selectedFolder = "inbox";
         await this.triageSingle(m.id);
+        this.selectedFolder = previous;
         return;
       }
 
       // Drafts / Sent / Junk: load the full message into the detail view.
+      // `effective` already accounts for cross-folder Flagged view rows.
       this.busy = true;
       this.message = "";
       this.selectedMessage = null;
       this.draftBody = "";
       this.view = "message";
       try {
-        const url = `/api/messages/${this.selectedAccount.id}/${this.selectedFolder}/${encodeURIComponent(m.id)}`;
+        const url = `/api/messages/${this.selectedAccount.id}/${effective}/${encodeURIComponent(m.id)}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
         this.selectedMessage = await res.json();
-        if (this.selectedFolder === "drafts") {
+        // Stash the effective kind so the toolbar's delete/flag handlers
+        // route to the right folder when the user is viewing from Flagged.
+        this.selectedMessage._kind = effective;
+        if (effective === "drafts") {
           // Seed the editor with the existing body so the user can edit in place.
           this.draftBody = this.selectedMessage.body || "";
         }
@@ -707,9 +734,12 @@ function app() {
 
     deleteCurrent() {
       // Dispatches from the in-card × button to the per-folder handler.
+      // When viewing the Flagged virtual folder we may have opened a row
+      // from any of the real folders — use selectedMessage._kind (stashed
+      // by openMessage) so the correct handler runs.
       if (this.view === "triage") return this.deleteCurrentInbox();
       if (this.view !== "message" || !this.selectedMessage) return;
-      const f = this.selectedFolder;
+      const f = this.selectedMessage._kind || this.selectedFolder;
       if (f === "drafts") return this.deleteDraft();
       if (f === "junk") return this.deleteJunk();
       if (f === "sent") return this.deleteSentMessage();
@@ -771,7 +801,8 @@ function app() {
       );
       this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
       try {
-        const url = `/api/messages/${this.selectedAccount.id}/${this.selectedFolder}/${encodeURIComponent(this.selectedMessage.id)}/flag`;
+        const apiKind = this.selectedMessage._kind || this.selectedFolder;
+        const url = `/api/messages/${this.selectedAccount.id}/${apiKind}/${encodeURIComponent(this.selectedMessage.id)}/flag`;
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -799,7 +830,12 @@ function app() {
       );
       this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
       try {
-        const url = `/api/messages/${this.selectedAccount.id}/${this.selectedFolder}/${encodeURIComponent(m.id)}/flag`;
+        // Use the row's source folder (Flagged view) or the current view's
+        // folder otherwise — both map to the same provider via the
+        // `flagged` alias on the server but routing to the original
+        // folder is more semantically correct.
+        const apiKind = this.rowKind(m);
+        const url = `/api/messages/${this.selectedAccount.id}/${apiKind}/${encodeURIComponent(m.id)}/flag`;
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -819,7 +855,9 @@ function app() {
     /* ---------- Delete: from list row (no need to open the email) ---------- */
     async deleteFromList(m) {
       if (!this.selectedAccount || !this.selectedFolder) return;
-      const folder = this.selectedFolder;
+      // Use the row's source folder (relevant inside the Flagged virtual
+      // view, where rows can be from any of inbox/sent/drafts/junk).
+      const folder = this.rowKind(m);
       const isLocal = folder === "sent" && this.isLocalSent(m.id);
       const subjectHint = m.subject ? `\n\n"${m.subject}"` : "";
       const prompt = isLocal
@@ -832,7 +870,9 @@ function app() {
         const res = await fetch(url, { method: "DELETE" });
         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
         this.messageList = this.messageList.filter((x) => x.id !== m.id);
-        this._saveCachedList(this.selectedAccount, folder, this.messageList);
+        // Keep cached under the *current view* (could be Flagged) so the
+        // list the user is looking at updates instantly.
+        this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
         this.message = "✓ Deleted.";
       } catch (e) {
         this.message = "Error: " + e.message;
