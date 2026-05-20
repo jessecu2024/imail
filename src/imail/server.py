@@ -950,17 +950,15 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
     )
     reply_store = _store_for(req.account_id) if is_inbox_like else None
 
-    # If the user is reopening an already-handled inbox message, return the
-    # original body + their saved reply with no DeepSeek call at all. We
-    # still open a session so the existing /draft and /send endpoints work
-    # if the user wants to re-send.
+    # If the user is reopening an already-handled inbox message, serve the
+    # saved-reply view directly from the on-disk store. Skip both DeepSeek
+    # *and* the IMAP login — this is a read-only view, no provider needed.
+    # The previous version spun up a fresh IMAP connection here (1-2 s on
+    # 163's "ID handshake then LOGIN") for every re-open, which made the
+    # already-replied path feel slower than the original-draft path.
     if reply_store is not None and reply_store.is_done(req.message_id):
         done_entry = reply_store.get_done(req.message_id)
         if done_entry is not None:
-            try:
-                provider = open_provider(account)
-            except ProviderError as exc:
-                raise HTTPException(502, str(exc)) from exc
             replayed = EmailMsg(
                 id=req.message_id,
                 thread_id=req.message_id,
@@ -970,18 +968,9 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
                 body=done_entry.body,
                 date=done_entry.date,
             )
-            _session = _Session(
-                account=account,
-                provider=provider,
-                generator=ReplyGenerator(
-                    api_key=settings.api_key,
-                    model=settings.model,
-                    user_signoff=settings.user_signoff,
-                    base_url=settings.base_url,
-                ),
-            )
-            _session.queue = []
-            _session.current = replayed
+            # No _session needed — none of /api/triage/{draft,send,skip,end}
+            # are reachable from the already-replied UI. End the previous
+            # session (already done above) and return.
             return TriageNextResponse(
                 done=False,
                 remaining=0,
