@@ -11,13 +11,36 @@
 
 ## 2. Configure the OAuth consent screen
 
-1. Left sidebar → **APIs & Services → OAuth consent screen**.
-2. User type: **External** → Create.
+> ⚠️ Google reworked this UI in late 2024. The section may show up as
+> **"OAuth consent screen"** (older projects) or **"Google Auth
+> Platform"** / **"Auth Platform"** (newer projects). The old
+> "**User type: Internal / External**" radio is now hidden inside a
+> multi-step wizard and renamed **"Audience"**. Pick the path that
+> matches what you see.
+
+### New UI (2025+) — "Get started" wizard
+
+1. Sidebar → **APIs & Services → Auth Platform**. If the page shows
+   a blue **Get started** button, you're on the new flow.
+2. Click **Get started** and walk through the 4 steps:
+   - **App information** — App name `imail`, user support email = your own.
+   - **Audience** — pick **External**. (This is where the old User-type
+     radio went.)
+   - **Contact information** — your email.
+   - **Finish** — agree to the User Data Policy → **Create**.
+3. After the wizard, go to the **Audience** tab → **Test users** →
+   **+ Add users** → add your own Gmail.
+
+### Old UI — single page
+
+1. Sidebar → **APIs & Services → OAuth consent screen**.
+2. User type: **External** → **Create**.
 3. App name: `imail`. Support email: your own.
 4. Scopes: skip (we request them at runtime).
-5. **Test users**: add your own Gmail address.
+5. **Test users**: add your own Gmail.
 
-> Leaving the app in *Testing* status is fine — only your test users can use it.
+> Leaving the app in *Testing* status is fine in both UIs — only the
+> test users you added can sign in.
 
 ## 3. Create OAuth client credentials
 
