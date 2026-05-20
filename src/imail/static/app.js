@@ -873,6 +873,13 @@ function app() {
         x.id === email.id ? { ...x, flagged: next } : x,
       );
       this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+      // Mirror into the Flagged virtual folder so opening Flagged shows
+      // the email instantly — without this, the 5-6 s cross-folder
+      // server scan stretches the "Flagged is empty" feeling.
+      this._mirrorFlagInFlaggedCache(
+        { ...email, source_kind: "inbox" },
+        next,
+      );
       try {
         const url = `/api/messages/${this.selectedAccount.id}/inbox/${encodeURIComponent(email.id)}/flag`;
         const res = await fetch(url, {
@@ -887,6 +894,7 @@ function app() {
           x.id === email.id ? { ...x, flagged: previous } : x,
         );
         this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+        this._mirrorFlagInFlaggedCache({ ...email, source_kind: "inbox" }, previous);
         this.message = "Error: " + e.message;
       }
     },
@@ -904,6 +912,15 @@ function app() {
         x.id === this.selectedMessage.id ? { ...x, flagged: next } : x,
       );
       this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+      // Mirror into the Flagged folder's cache (uses _kind if set,
+      // falling back to selectedFolder; never "flagged" itself).
+      const sourceKind =
+        this.selectedMessage._kind ||
+        (this.selectedFolder !== "flagged" ? this.selectedFolder : "inbox");
+      this._mirrorFlagInFlaggedCache(
+        { ...this.selectedMessage, source_kind: sourceKind },
+        next,
+      );
       try {
         const apiKind = this.selectedMessage._kind || this.selectedFolder;
         const url = `/api/messages/${this.selectedAccount.id}/${apiKind}/${encodeURIComponent(this.selectedMessage.id)}/flag`;
@@ -919,6 +936,10 @@ function app() {
           x.id === this.selectedMessage.id ? { ...x, flagged: previous } : x,
         );
         this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+        this._mirrorFlagInFlaggedCache(
+          { ...this.selectedMessage, source_kind: sourceKind },
+          previous,
+        );
         this.message = "Error: " + e.message;
       }
     },

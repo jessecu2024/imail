@@ -21,7 +21,7 @@ import logging
 import threading
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
@@ -188,6 +188,40 @@ def _body_drop(account_id: str, kind: str, message_id: str) -> None:
 # Prefix on synthetic message ids representing locally-cached "I already
 # replied to this" entries surfaced inside the Sent folder listing.
 _LOCAL_SENT_PREFIX = "local:"
+
+# Cross-folder Flagged scan is expensive (4 IMAP SELECTs + 4 envelope
+# FETCHes on 163, ~5-6 s warm). Cache the result per-account for a short
+# TTL so back-to-back navigations to the Flagged folder don't redo the
+# scan. Invalidated on every set_flag call. Memory-only, lost on restart.
+_FLAGGED_CACHE_TTL_SEC = 30.0
+_flagged_cache: dict[str, tuple[float, list[Any]]] = {}
+_flagged_cache_lock = threading.Lock()
+
+
+def _flagged_cache_get(account_id: str) -> list[Any] | None:
+    import time as _t
+
+    with _flagged_cache_lock:
+        entry = _flagged_cache.get(account_id)
+        if entry is None:
+            return None
+        ts, summaries = entry
+        if _t.time() - ts > _FLAGGED_CACHE_TTL_SEC:
+            _flagged_cache.pop(account_id, None)
+            return None
+        return summaries
+
+
+def _flagged_cache_put(account_id: str, summaries: list[Any]) -> None:
+    import time as _t
+
+    with _flagged_cache_lock:
+        _flagged_cache[account_id] = (_t.time(), summaries)
+
+
+def _flagged_cache_invalidate(account_id: str) -> None:
+    with _flagged_cache_lock:
+        _flagged_cache.pop(account_id, None)
 
 
 def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
@@ -498,6 +532,14 @@ def list_folder(
     actual_kind: Literal["inbox", "drafts", "sent", "junk"] = "inbox" if kind == "flagged" else kind
 
     if kind == "flagged":
+        # 30-s cache hit short-circuits the whole cross-folder scan. The
+        # cache is invalidated on every set_flag, so the first navigation
+        # after a flag toggle still goes to the server (and picks up the
+        # change), while back-to-back clicks within the TTL are instant.
+        cached_summaries = _flagged_cache_get(account_id)
+        if cached_summaries is not None:
+            return [MessageSummary(**s) for s in cached_summaries]
+
         msgs: list[EmailMsg] = []
         # Track each message's source folder so the frontend knows which
         # backend kind to route operations to (delete/flag/open).
@@ -509,9 +551,11 @@ def list_folder(
         # The simpler list_folder + client-side filter, with a small
         # limit, ends up faster in practice because the server is
         # already accustomed to returning the N-newest envelopes.
+        # Skip drafts — flagging a draft is extremely rare and the extra
+        # IMAP SELECT shaves ~1 s off the warm-pool case.
         try:
             with use_provider(account_id) as provider:
-                for sub_kind in ("inbox", "sent", "drafts", "junk"):
+                for sub_kind in ("inbox", "sent", "junk"):
                     try:
                         for m in provider.list_folder(sub_kind, limit=50):
                             if m.flagged:
@@ -605,6 +649,11 @@ def list_folder(
             for e in _store_for(account_id).done_entries()
         ]
         summaries = local_rows + summaries
+
+    # Stash the freshly-computed cross-folder list so subsequent navigations
+    # to Flagged within the TTL bypass the scan.
+    if kind == "flagged":
+        _flagged_cache_put(account_id, [s.model_dump() for s in summaries])
 
     return summaries
 
@@ -801,6 +850,9 @@ def set_flag(
     req: FlagRequest,
 ) -> dict[str, bool]:
     """Toggle the IMAP \\Flagged / Gmail STARRED flag on a message."""
+    # Any flag change invalidates the cross-folder Flagged cache so the
+    # next /api/folders/.../flagged call sees the change.
+    _flagged_cache_invalidate(account_id)
     if message_id.startswith(_LOCAL_SENT_PREFIX):
         # Synthetic local rows aren't on the IMAP server. Persist the flag
         # state inside the local reply store so the Flagged virtual folder
