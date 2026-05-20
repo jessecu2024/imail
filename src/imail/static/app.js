@@ -811,12 +811,13 @@ function app() {
         return;
       }
       this.compose.sending = true;
+      const acct = this.selectedAccount;
       try {
         const res = await fetch("/api/compose/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            account_id: this.selectedAccount.id,
+            account_id: acct.id,
             to: this.compose.to,
             subject: this.compose.subject,
             body: this.compose.body,
@@ -825,7 +826,28 @@ function app() {
         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
         this.message = `✓ ${this.t("sent_ok") || "Sent."}`;
         this.compose = null;
-        this.view = this._composeReturnView || "welcome";
+        // After a successful send, jump straight into the Sent folder so
+        // the user can see their message land at the top of the list.
+        // SMTP servers like 163 auto-copy outgoing mail to IMAP Sent but
+        // with a 1-5 sec lag — issue an immediate refresh + a delayed
+        // re-refresh so the new row shows as soon as it materializes
+        // server-side. (Cache invalidation across folders means the
+        // first refresh might still see the stale list; the 2nd at
+        // ~2 sec catches the new row in practice.)
+        this.selectedAccount = acct;
+        this.selectedFolder = "sent";
+        this.expandedAccount = acct.id;
+        this.view = "folder";
+        await this._loadMessageList();
+        setTimeout(() => {
+          if (
+            this.selectedFolder === "sent" &&
+            this.selectedAccount &&
+            this.selectedAccount.id === acct.id
+          ) {
+            this._loadMessageList();
+          }
+        }, 2000);
       } catch (e) {
         this.message = "Error: " + e.message;
       } finally {
