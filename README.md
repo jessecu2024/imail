@@ -138,7 +138,7 @@ container restarts.
 
 | Provider                     | How                                       | Setup doc                            |
 |------------------------------|-------------------------------------------|--------------------------------------|
-| ✦ **Gmail**                  | OAuth (`gmail.modify` scope, no `.send`)  | [gmail-setup.md](docs/gmail-setup.md) |
+| ✦ **Gmail**                  | OAuth (`readonly` + `modify` + `compose` + `send`) | [gmail-setup.md](docs/gmail-setup.md) |
 | ▦ **Microsoft 365 / Office** | IMAP + app password                       | [imap-setup.md](docs/imap-setup.md)   |
 | ▣ **Outlook.com / Hotmail**  | IMAP + app password                       | [imap-setup.md](docs/imap-setup.md)   |
 | ✱ **163 / 126 / QQ**         | IMAP + 授权码                              | [imap-setup.md](docs/imap-setup.md)   |
@@ -224,8 +224,11 @@ docs/
 
 ## 🔒 Security
 
-- 🚫 **No `gmail.send` scope** is requested; the Gmail provider can only fetch,
-  draft, mark-read, and archive.
+- 📧 **Gmail OAuth scopes**: `gmail.readonly` (fetch), `gmail.modify`
+  (mark-read / archive), `gmail.compose` (drafts), and `gmail.send`
+  (one-keystroke send from the triage view). If you'd rather only ever
+  save drafts and send manually from Gmail, remove `gmail.send` from
+  `SCOPES` in `src/imail/providers/gmail.py` and revoke the token.
 - 🔑 **IMAP app passwords stay in the OS keyring**, never in `accounts.json` or `.env`.
 - 🔐 **OAuth tokens** live at `~/.config/imail/token-<account-id>.json` (mode `0600`).
 - 🏠 **Local-only by default.** Server listens on `127.0.0.1`. Don't move it

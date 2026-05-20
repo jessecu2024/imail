@@ -46,10 +46,16 @@ and grant the requested scopes. A token is cached to
 
 ## Scopes
 
-| Scope                                          | Why                       |
-| ---------------------------------------------- | ------------------------- |
-| `gmail.readonly`                               | Fetch unread messages     |
-| `gmail.modify`                                 | Mark-as-read / archive    |
-| `gmail.compose`                                | Create drafts             |
+| Scope                                          | Why                                                   |
+| ---------------------------------------------- | ----------------------------------------------------- |
+| `gmail.readonly`                               | Fetch unread messages                                 |
+| `gmail.modify`                                 | Mark-as-read / archive                                |
+| `gmail.compose`                                | Save the chosen reply as a draft                      |
+| `gmail.send`                                   | One-keystroke send (⌘↵) from the triage view           |
 
-**No `gmail.send` is requested.** The tool never sends mail; you always press Send manually in Gmail.
+If you'd rather have `imail` only ever save drafts — so you have to
+open Gmail and press Send yourself — drop the
+`https://www.googleapis.com/auth/gmail.send` line from `SCOPES` in
+`src/imail/providers/gmail.py`, then revoke the stored OAuth token
+at <https://myaccount.google.com/permissions> so the next run prompts
+for fresh consent without the send scope.
