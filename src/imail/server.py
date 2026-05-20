@@ -1107,10 +1107,13 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
 
     # Clicking through to triage is a "read" event — flip the IMAP \Seen
     # flag so other clients (163 webmail, phone) see the same state as
-    # the frontend optimistically does. Best-effort, via the pool, and
-    # only on a cold-path response: cache hits don't need a refresh,
-    # the original prefetch already marked it.
-    if is_inbox_like and cached is None:
+    # the frontend optimistically does. Best-effort via the pool. NOTE:
+    # this fires on cache-hit too — the original prefetch (_warm_inbox_cache)
+    # only generates replies, it does NOT mark_read. Without this, a
+    # cache-hit click would leave IMAP's \Seen unset, and the 30-s inbox
+    # poll would later show the message as unread again ("the red dot
+    # keeps coming back" bug).
+    if is_inbox_like:
         with contextlib.suppress(Exception), use_provider(req.account_id) as provider:
             provider.mark_read(email_msg)
 
