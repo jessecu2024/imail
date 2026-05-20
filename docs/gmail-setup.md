@@ -30,21 +30,18 @@
 > Leaving the app in *Testing* is fine — only the test users you added
 > can sign in.
 
-## 3. Enable the Gmail API
-
-Top **search bar** → `Gmail API` → **Enable**.
+## 3. Enable the Gmail API + create OAuth client credentials
 
 > Enable the API *after* the consent screen exists — newer Cloud
 > Console requires consent to be configured before it'll let you
 > create credentials that hit the API.
 
-## 4. Create OAuth client credentials
+1. Top **search bar** → `Gmail API` → **Enable**.
+2. Sidebar → **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
+3. Application type: **Desktop app**. Name: `imail-cli`.
+4. Click **Create**, then **Download JSON**.
 
-1. Sidebar → **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
-2. Application type: **Desktop app**. Name: `imail-cli`.
-3. Click **Create**, then **Download JSON**.
-
-## 5. Drop the file in place
+## 4. Drop the file in place
 
 ```bash
 mkdir -p ~/.config/imail
@@ -53,7 +50,7 @@ mv ~/Downloads/client_secret_*.json ~/.config/imail/credentials.json
 
 (or set `GMAIL_CREDENTIALS_PATH` in your `.env` to point elsewhere)
 
-## 6. First run
+## 5. First run
 
 ```bash
 uv run imail
