@@ -9,6 +9,118 @@ Version numbers follow [SemVer](https://semver.org/).
 
 ---
 
+## [1.4.0] — 2026-05-20
+
+A big visual + UX overhaul. Same install command (`uv tool install
+imail-cli` / `brew install jessecu2024/tap/imail` / `docker pull
+ghcr.io/jessecu2024/imail`), drop-in upgrade — but most surfaces of
+the app are unrecognisable from 1.3.x.
+
+### Added
+
+- **Light theme** (default), Gmail-adjacent palette. Replaces the
+  dark-navy 1.3.x look.
+- **macOS-Mail-style logo** — sky-blue gradient tile, white
+  envelope, centred red "i" dot. Used as the favicon, the brand
+  glyph in the sidebar, and the README hero.
+- **Chinese (简体中文) UI option.** Settings → Language toggles
+  English ↔ 中文; the choice persists in `localStorage`. ~80 string
+  keys translated, covering sidebar / triage / Settings / shortcuts
+  / privacy / about. Reply *content* drafted by DeepSeek stays
+  English regardless (a deliberate product choice).
+- **Settings page** with sticky anchored navigation: Language /
+  Accounts / Replies / Keyboard shortcuts / Privacy & security /
+  Local data / About. Accounts card is the single source of truth
+  for "remove account" — the destructive button is no longer in the
+  sidebar.
+- **Reply / Reply all / Forward.** Toolbar buttons on both the
+  message-detail and triage views open a compose form pre-filled
+  for the chosen mode (with `>`-quoted original for Forward).
+  Send goes via `/api/compose/send` → provider's new
+  `send_compose(to, subject, body)` (SMTP for IMAP, Gmail API for
+  Gmail). After sending, the user lands in Sent with the new
+  message visible at the top.
+- **Flagged virtual folder.** Cross-folder view of every message
+  with `\Flagged` / Gmail STARRED set. Sidebar entry between
+  Inbox and Drafts. Optimistic local cache so a freshly-flagged
+  email shows instantly; a 30-second per-account server-side cache
+  makes back-to-back navigations to Flagged effectively free.
+  Local `:` synthetic Sent rows can also be flagged — the bit is
+  persisted in the reply store.
+- **Per-row flag (red flag) and delete (trash) buttons** revealed
+  on hover, plus a Reply / Reply all / Forward / Flag / Delete
+  toolbar at the top of every open message.
+- **Sender avatars** in list rows (Gmail-style coloured initial
+  circles, deterministic per sender).
+- **Folder icons are SVG** (inbox / drafts / sent / junk / flagged)
+  instead of emoji — consistent across OSes.
+- **Sender prefix `→`** on Sent listing rows (and Flagged rows
+  with source_kind=sent) so the reader can tell a sent message
+  from an incoming one at a glance.
+- **In-reply-to card** below a local `:` Sent row's reply text —
+  shows the original incoming email so the user can remember what
+  they replied to.
+- **Read-on-open.** Clicking an inbox email immediately marks it
+  read (server-side IMAP \Seen + frontend optimistic update), so
+  the unread red dot and the sidebar count badge drop the moment
+  the user opens it.
+- **Red unread indicator dot** before unread-and-not-yet-replied
+  rows. Sidebar count badge also red, matching.
+- **Newest-first ordering** for IMAP listings (UID-descending sort
+  applied after envelope fetch — IMAP servers were returning
+  sequence-ascending and showing oldest first).
+- **Setup banner** at the top of the page when `DEEPSEEK_API_KEY`
+  is missing — three concrete setup steps with a free-signup link.
+- **GitHub issue templates** (bug / feature request, modern YAML
+  form schema).
+
+### Changed
+
+- All triage operations route through the per-account IMAP
+  connection pool now; sessions no longer hold a private provider.
+  Click-to-open of a cached pending email dropped from ~3-12 s to
+  ~30 ms; re-open of an already-replied email dropped from ~3 s
+  to ~25 ms.
+- Sidebar layout cleaned up: account header, folder list with
+  unread count, "+ Add account" CTA at the bottom.
+- README repaginated with emoji-anchored H2s and a four-column
+  install matrix (uv / pipx / Homebrew / Docker).
+- Distribution channels documented in About: PyPI · imail-cli,
+  GHCR Docker, Homebrew tap.
+
+### Fixed
+
+- The unread red dot used to keep reappearing on the top inbox
+  row after a 30-second poll because the cached-pending path
+  never called `mark_read` — fixed by always firing mark_read on
+  triage_single, cache hit or not.
+- Sidebar inbox count badge counted IMAP-unread rows the user had
+  already replied to; now only counts `unread && !replied`.
+- The Flagged folder used to be empty for messages flagged in Sent
+  because the scan only looked at Inbox; now scans inbox + sent +
+  junk (drafts intentionally skipped).
+- Operations on rows surfaced in the Flagged virtual folder used
+  to route to inbox regardless of the row's actual source; now
+  routes to `source_kind` so delete / flag / open hit the correct
+  underlying folder.
+- 163's `已发送邮件` / `已删除邮件` empty-body fetches now produce
+  a clear "message no longer exists, refresh the folder" error
+  with auto-refresh on the frontend, instead of a confusing
+  "empty body" message.
+
+### Notes
+
+- Reply all currently behaves identically to Reply (no Cc parsing
+  yet). The button is visible because the toolbar's shape should
+  match what users expect from Gmail / Outlook; Cc support is on
+  the roadmap.
+- The cross-folder Flagged scan takes 5-6 s cold against 163 —
+  unavoidable given the four IMAP SELECT + envelope-fetch
+  round-trips. The optimistic-cache + 30 s server cache mask this
+  in practice.
+
+---
+
 ## [1.3.2] — 2026-05-19
 
 ### Fixed
@@ -158,6 +270,7 @@ adds the install-and-distribute pipeline.
 
 History before semver discipline. See `git log` for individual commits.
 
+[1.4.0]: https://github.com/jessecu2024/imail/releases/tag/v1.4.0
 [1.3.2]: https://github.com/jessecu2024/imail/releases/tag/v1.3.2
 [1.3.1]: https://github.com/jessecu2024/imail/releases/tag/v1.3.1
 [1.3.0]: https://github.com/jessecu2024/imail/releases/tag/v1.3.0
