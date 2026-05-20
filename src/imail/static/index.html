@@ -245,7 +245,7 @@
             <li><span class="ok">✓</span> Server binds to <code>127.0.0.1</code> by default — only your machine reaches the UI.</li>
             <li><span class="ok">✓</span> IMAP passwords stay in the OS keyring (macOS Keychain / Windows Credential Manager / Secret Service on Linux). Never in <code>accounts.json</code> or <code>.env</code>.</li>
             <li><span class="ok">✓</span> OAuth tokens live at <code x-text="(status.config_dir || '~/.config/imail') + '/token-*.json'"></code>, mode 0600.</li>
-            <li><span class="ok">✓</span> Gmail provider requests <code>gmail.modify</code> only — it can fetch, draft, mark-read, archive. <strong>No send scope.</strong></li>
+            <li><span class="warn">!</span> Gmail OAuth requests <code>readonly</code>, <code>modify</code>, <code>compose</code>, <strong>and <code>send</code></strong> — choosing a reply and pressing ⌘↵ sends it immediately. Drop <code>gmail.send</code> from <code>providers/gmail.py</code> if you want manual-send-only.</li>
             <li><span class="warn">!</span> Email bodies are sent to <code>IMAIL_BASE_URL</code> (DeepSeek by default) for draft generation. To stay fully on-device, point it at a local Ollama / vLLM.</li>
             <li><span class="ok">✓</span> No telemetry. imail makes no outbound requests other than to IMAP/Gmail and your configured LLM endpoint.</li>
           </ul>
