@@ -59,6 +59,13 @@ class MailProvider(Protocol):
         to push detected-spam mail out of the inbox, and by the UI to restore
         false positives from Junk back to Inbox."""
 
+    def list_flagged(self, kind: FolderKind, limit: int = 50) -> list[EmailMsg]:
+        """List only the flagged messages in a folder. Implementations
+        should push the filter to the server (IMAP `SEARCH FLAGGED`,
+        Gmail's `STARRED` label) rather than listing everything and
+        filtering client-side — the latter is what made the cross-folder
+        Flagged view feel slow on 163."""
+
     def search(self, kind: FolderKind, query: str, limit: int = 50) -> list[EmailMsg]:
         """Full-text search within a folder. Returns message summaries (no body)."""
 

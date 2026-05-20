@@ -226,6 +226,26 @@ class GmailProvider:
         body = {"addLabelIds": ["STARRED"]} if flagged else {"removeLabelIds": ["STARRED"]}
         self._service.users().messages().modify(userId="me", id=message_id, body=body).execute()
 
+    def list_flagged(self, kind: FolderKind, limit: int = 50) -> list[EmailMsg]:
+        """Server-side filter using the STARRED label intersected with the
+        folder label. Skips drafts (Gmail drafts use a separate endpoint
+        and can't be starred meaningfully)."""
+        if kind == "drafts":
+            return []
+        label = GMAIL_LABEL.get(kind)
+        if label is None:
+            return []
+        resp = (
+            self._service.users()
+            .messages()
+            .list(userId="me", labelIds=[label, "STARRED"], maxResults=limit)
+            .execute()
+        )
+        return [
+            self._get_message_summary(m["id"], unread_label=(kind == "inbox"))
+            for m in resp.get("messages", [])
+        ]
+
     def close(self) -> None:
         # The Discovery client holds no long-lived sockets.
         return None

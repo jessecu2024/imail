@@ -381,6 +381,38 @@ class ImapProvider:
             "check the server log for the raw response)."
         )
 
+    def list_flagged(self, kind: FolderKind, limit: int = 50) -> list[EmailMsg]:
+        """Return only messages with the IMAP \\Flagged bit set in a folder.
+
+        Implemented as `SEARCH FLAGGED` so the server filters before we
+        pay envelope-fetch cost. For 163, the cross-folder Flagged view
+        used to take 1-3 seconds because we listed every folder's
+        50-100 envelopes and filtered client-side; with this it drops
+        to a handful of cheap SEARCH-then-small-FETCH round-trips.
+        """
+        conn = self._ensure_connected()
+        folder = self._get_folder(kind, conn)
+        typ, _ = conn.select(folder, readonly=True)
+        if typ != "OK":
+            raise ProviderError(f"Could not select {folder}.")
+
+        typ, data = conn.search(None, "FLAGGED")
+        if typ != "OK":
+            raise ProviderError(f"IMAP FLAGGED search failed in {folder}.")
+
+        ids = data[0].split()
+        ids = list(reversed(ids))[:limit]
+        if not ids:
+            return []
+
+        id_set = ",".join(i.decode("ascii") for i in ids)
+        typ, fetched = conn.fetch(
+            id_set, "(UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])"
+        )
+        if typ != "OK":
+            raise ProviderError(f"IMAP envelope fetch failed for flagged in {folder}.")
+        return sorted(_parse_envelope_list(fetched), key=_uid_sort_key, reverse=True)
+
     def search(self, kind: FolderKind, query: str, limit: int = 50) -> list[EmailMsg]:
         """IMAP TEXT search: matches the query against headers AND body.
 

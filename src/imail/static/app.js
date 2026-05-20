@@ -933,6 +933,10 @@ function app() {
         x.id === m.id ? { ...x, flagged: desired } : x,
       );
       this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+      // Also mirror the change into the Flagged virtual folder's cache so
+      // the user sees the new state the instant they switch to Flagged —
+      // no waiting for the cross-folder IMAP scan to come back.
+      this._mirrorFlagInFlaggedCache(m, desired);
       try {
         // Use the row's source folder (Flagged view) or the current view's
         // folder otherwise — both map to the same provider via the
@@ -952,7 +956,40 @@ function app() {
           x.id === m.id ? { ...x, flagged: previous } : x,
         );
         this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+        this._mirrorFlagInFlaggedCache(m, previous);
         this.message = "Error: " + e.message;
+      }
+    },
+
+    _mirrorFlagInFlaggedCache(m, desired) {
+      // Keep the Flagged virtual folder's localStorage cache in sync with
+      // a flag toggle that happened from another folder. When desired=true
+      // we append (or update) the row with a source_kind that matches the
+      // row's actual source. When desired=false we just drop the row.
+      if (!this.selectedAccount) return;
+      const cached = this._loadCachedList(this.selectedAccount, "flagged") || [];
+      let next;
+      if (desired) {
+        // The row's source_kind: if we're in Flagged already it's m.source_kind;
+        // otherwise it's whichever folder we're currently in.
+        const sourceKind =
+          m.source_kind ||
+          (this.selectedFolder !== "flagged" ? this.selectedFolder : "inbox");
+        const exists = cached.find((x) => x.id === m.id);
+        if (exists) {
+          next = cached.map((x) =>
+            x.id === m.id ? { ...x, flagged: true, source_kind: sourceKind } : x,
+          );
+        } else {
+          next = [{ ...m, flagged: true, source_kind: sourceKind }, ...cached];
+        }
+      } else {
+        next = cached.filter((x) => x.id !== m.id);
+      }
+      this._saveCachedList(this.selectedAccount, "flagged", next);
+      // If the user is currently viewing Flagged, refresh the on-screen list.
+      if (this.selectedFolder === "flagged") {
+        this.messageList = next;
       }
     },
 

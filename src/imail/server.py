@@ -502,11 +502,18 @@ def list_folder(
         # Track each message's source folder so the frontend knows which
         # backend kind to route operations to (delete/flag/open).
         source_kinds: dict[str, str] = {}
+        # SEARCH FLAGGED was tried here originally to push the filter to
+        # the server, but 163 doesn't keep an index for \Flagged — the
+        # server ended up scanning every message in inbox (~50 k for a
+        # busy mailbox) and the cross-folder Flagged route took 8-50 s.
+        # The simpler list_folder + client-side filter, with a small
+        # limit, ends up faster in practice because the server is
+        # already accustomed to returning the N-newest envelopes.
         try:
             with use_provider(account_id) as provider:
                 for sub_kind in ("inbox", "sent", "drafts", "junk"):
                     try:
-                        for m in provider.list_folder(sub_kind, limit=100):
+                        for m in provider.list_folder(sub_kind, limit=50):
                             if m.flagged:
                                 msgs.append(m)
                                 source_kinds[m.id] = sub_kind
@@ -550,16 +557,21 @@ def list_folder(
         handled = _store_for(account_id).done_ids()
 
     # Fire-and-forget warm-up:
-    #   - Inbox + Flagged: full triage prefetch (body + 3 DeepSeek replies +
+    #   - Inbox (real): full triage prefetch (body + 3 DeepSeek replies +
     #     spam-move), scoped to messages that aren't already handled.
     #   - Sent / Drafts / Junk: just cache bodies for the top N so the first
     #     click is instant.
+    #   - Flagged (virtual cross-folder view): NO prefetch — the IDs come
+    #     from multiple folders, so handing them to _warm_inbox_cache (which
+    #     calls provider.fetch_message("inbox", id)) would fail with id-not-found
+    #     for the non-inbox ones, and the bodies are usually small/already
+    #     cached anyway.
     if msgs:
-        if actual_kind == "inbox":
+        if kind == "inbox":
             unhandled_ids = [m.id for m in msgs if m.id not in handled]
             if unhandled_ids:
                 background_tasks.add_task(_warm_inbox_cache, account_id, unhandled_ids)
-        elif kind != "flagged":
+        elif kind in ("sent", "drafts", "junk"):
             ids = [m.id for m in msgs]
             background_tasks.add_task(_warm_folder_bodies, account_id, actual_kind, ids)
 
