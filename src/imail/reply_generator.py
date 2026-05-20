@@ -62,8 +62,9 @@ already said, asked, or attached in prior exchanges.
 
 Rules for every reply (this format is REQUIRED, no variants):
 
-- Open with `Dear <FirstName>,` on its own line, where FirstName is taken
-  from the "Sender first name" field provided below. Follow it with a
+- Use the "Salutation" field provided below VERBATIM as the first line
+  (e.g. `Dear Alex,` for a person, `Dear HSBC Team,` for an organisation,
+  or `Hello,` when nothing identifiable is available). Follow it with a
   blank line, then the body.
 - Close with exactly two lines at the end:
       Best regards,
@@ -141,17 +142,341 @@ class ReplyGenerator:
 
     def _build_user_message(self, email: EmailMsg) -> str:
         body = email.body[:4000] if email.body else email.snippet
-        first_name = extract_first_name(email.sender) or "there"
+        salutation = build_salutation(email.sender)
         return (
             f"Recipient (me): {self._signoff}\n"
             f"From: {email.sender}\n"
-            f"Sender first name (use in 'Dear ...,'): {first_name}\n"
+            f"Salutation (use VERBATIM as the first line): {salutation}\n"
             f"Subject: {email.subject}\n"
             f"---\n"
             f"{body}\n"
             f"---\n"
             "Draft three reply versions (positive / neutral / negative)."
         )
+
+
+# ---------- Salutation building ---------- #
+
+# Local-part tokens that strongly indicate an organisation mailbox.
+_INSTITUTIONAL_LOCALPART_TOKENS: frozenset[str] = frozenset(
+    {
+        "noreply",
+        "no_reply",
+        "donotreply",
+        "do_not_reply",
+        "info",
+        "support",
+        "help",
+        "service",
+        "services",
+        "contact",
+        "admin",
+        "notifications",
+        "notification",
+        "alerts",
+        "alert",
+        "team",
+        "hello",
+        "hi",
+        "mail",
+        "mailer",
+        "postmaster",
+        "visa",
+        "evisa",
+        "billing",
+        "accounts",
+        "account",
+        "office",
+        "enquiry",
+        "enquiries",
+        "feedback",
+        "marketing",
+        "news",
+        "newsletter",
+        "press",
+        "media",
+        "careers",
+        "jobs",
+        "automated",
+        "robot",
+        "bot",
+        "system",
+    }
+)
+
+# Substrings that, if present anywhere in the local-part, mark the
+# mailbox as institutional even when it isn't an exact token match.
+_INSTITUTIONAL_LOCALPART_SUBSTRINGS: tuple[str, ...] = (
+    "noreply",
+    "no-reply",
+    "donotreply",
+    "do-not-reply",
+    "notification",
+    "newsletter",
+    "no_reply",
+    "communications",
+)
+
+# Words in the display name that mark the sender as an organisation.
+_INSTITUTIONAL_DISPLAY_KEYWORDS: tuple[str, ...] = (
+    "team",
+    "service",
+    "services",
+    "desk",
+    "center",
+    "centre",
+    "support",
+    "office",
+    "department",
+    "dept",
+    "group",
+    "newsletter",
+    "notification",
+    "notifications",
+    "alerts",
+    "no reply",
+    "noreply",
+    "no-reply",
+    "do not reply",
+)
+
+# Domain-name prefixes used for transactional/marketing sub-domains that
+# shouldn't appear in a brand label (e.g. "messaging.hsbc.com" → "hsbc").
+_DOMAIN_NOISE_PREFIXES: frozenset[str] = frozenset(
+    {
+        "mail",
+        "email",
+        "messaging",
+        "messages",
+        "send",
+        "sendgrid",
+        "smtp",
+        "mta",
+        "marketing",
+        "promo",
+        "newsletter",
+        "notifications",
+        "notification",
+        "alerts",
+        "noreply",
+        "no-reply",
+        "donotreply",
+        "info",
+        "support",
+        "help",
+        "auto",
+        "system",
+        "service",
+    }
+)
+
+# Common public TLDs (and country-code suffixes) to strip when deriving
+# a brand label from a domain.
+_DOMAIN_TLDS: frozenset[str] = frozenset(
+    {
+        "com",
+        "net",
+        "org",
+        "edu",
+        "gov",
+        "co",
+        "io",
+        "ai",
+        "app",
+        "uk",
+        "us",
+        "cn",
+        "hk",
+        "tw",
+        "jp",
+        "kr",
+        "sg",
+        "au",
+        "ca",
+        "de",
+        "fr",
+        "es",
+        "it",
+        "nl",
+        "se",
+        "no",
+        "fi",
+        "dk",
+        "ch",
+        "in",
+        "br",
+        "mx",
+        "ru",
+        "info",
+        "biz",
+    }
+)
+
+# Generic suffix words that get stripped from a display-name-derived
+# brand label so it reads cleanly when "Team" is appended.
+_DISPLAY_BRAND_TAIL_NOISE: frozenset[str] = frozenset(
+    {
+        "team",
+        "desk",
+        "center",
+        "centre",
+        "department",
+        "dept",
+        "group",
+        "office",
+        "support",
+        "service",
+        "services",
+        "hong",
+        "kong",
+        "tokyo",
+        "shanghai",
+        "beijing",
+        "sydney",
+        "london",
+        "paris",
+        "berlin",
+        "new",
+        "york",
+        "francisco",
+        "international",
+        "global",
+        "worldwide",
+        "limited",
+        "ltd",
+        "inc",
+        "incorporated",
+        "co",
+        "corp",
+        "corporation",
+        "llc",
+    }
+)
+
+
+def build_salutation(sender_header: str) -> str:
+    """Pick a context-appropriate salutation for the `Dear ...,` opener.
+
+    Personal senders get `Dear <FirstName>,`. Institutional senders
+    (no-reply / service desks / banks / bots) get `Dear <Brand> Team,`,
+    derived from the email domain rather than parsing the display name —
+    this avoids the surprise of mis-naming the brand as a person (e.g.
+    a "Japan Visa Service Desk <evisa@vfsglobal.com>" header used to
+    open replies with `Dear Japan,` because "Japan" is the first Latin
+    token in the display name).
+
+    Falls back to `Hello,` when nothing identifiable can be derived.
+    """
+    if not sender_header or not sender_header.strip():
+        return "Hello,"
+
+    name, addr = _parseaddr_tolerant(sender_header)
+    local, domain = _split_addr(addr)
+
+    if _looks_institutional(name, local):
+        brand = _brand_from_domain(domain) or _brand_from_display(name)
+        return f"Dear {brand} Team," if brand else "Hello,"
+
+    first = extract_first_name(sender_header)
+    return f"Dear {first}," if first else "Hello,"
+
+
+def _split_addr(addr: str) -> tuple[str, str]:
+    """Split an email address into (local-part, domain), lowercased.
+
+    Returns empty strings for parts that aren't present.
+    """
+    if not addr or "@" not in addr:
+        return ("", "")
+    local, _, domain = addr.partition("@")
+    return (local.lower(), domain.lower())
+
+
+# Match an `addr@host` substring as a fallback when RFC parsing fails.
+_ADDR_FALLBACK_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+
+
+def _parseaddr_tolerant(sender_header: str) -> tuple[str, str]:
+    """Parse a From header without choking on `[bot]`-style display names.
+
+    `email.utils.parseaddr` follows RFC 2822 strictly and returns `('', '')`
+    when the display name contains square brackets (e.g.
+    `sourcery-ai[bot] <notifications@github.com>` — the brackets confuse the
+    address parser into treating the whole thing as malformed). Strip
+    bracketed comments out of the display name first, then fall back to a
+    regex-based address extraction if parsing still fails.
+    """
+    cleaned = re.sub(r"\[[^\]]*\]", "", sender_header).strip()
+    name, addr = email.utils.parseaddr(cleaned)
+    name = name.strip().strip('"').strip()
+    if not addr:
+        match = _ADDR_FALLBACK_RE.search(sender_header)
+        if match:
+            addr = match.group(0)
+            if not name:
+                # Display name is whatever comes before the address.
+                head = sender_header[: match.start()].strip().strip("<").strip()
+                head = re.sub(r"\[[^\]]*\]", "", head).strip().strip('"').strip()
+                name = head
+    return (name, addr)
+
+
+def _looks_institutional(display_name: str, local: str) -> bool:
+    """Heuristic: does this sender look like an organisation, not a person?"""
+    local_tokens = re.split(r"[._\-+]+", local) if local else []
+    if any(tok in _INSTITUTIONAL_LOCALPART_TOKENS for tok in local_tokens):
+        return True
+    if any(sub in local for sub in _INSTITUTIONAL_LOCALPART_SUBSTRINGS):
+        return True
+    lowered = display_name.lower()
+    return any(kw in lowered for kw in _INSTITUTIONAL_DISPLAY_KEYWORDS)
+
+
+def _brand_from_domain(domain: str) -> str:
+    """Best-effort short brand label derived from an email domain.
+
+    Strips TLDs and common transactional sub-domain prefixes, then
+    capitalises the remaining label. Short labels (≤4 chars, all-letter)
+    are upper-cased so `hsbc.com` → `HSBC` and `bbc.co.uk` → `BBC`,
+    while longer ones get title-cased so `github.com` → `Github`.
+    """
+    if not domain:
+        return ""
+    parts = [p for p in domain.split(".") if p]
+    # Strip trailing TLDs (handles both `.com` and `.co.uk`).
+    while parts and parts[-1] in _DOMAIN_TLDS:
+        parts.pop()
+    # Strip transactional-subdomain prefixes ("messaging.hsbc" → "hsbc").
+    while len(parts) > 1 and parts[0] in _DOMAIN_NOISE_PREFIXES:
+        parts.pop(0)
+    if not parts:
+        return ""
+    label = parts[0]
+    if not _has_latin(label):
+        return ""
+    if len(label) <= 4 and label.isalpha():
+        return label.upper()
+    return label.capitalize()
+
+
+def _brand_from_display(display_name: str) -> str:
+    """Fallback: derive a brand label from the display name.
+
+    Drops trailing generic words ("Team", "Desk") and location/legal
+    suffixes ("Hong Kong", "Limited") so the result reads cleanly when
+    "Team" is appended by the caller.
+    """
+    if not display_name:
+        return ""
+    raw_tokens = [t for t in re.split(r"\s+", display_name.strip()) if t]
+    # Drop bracketed-suffix junk like "[bot]" or "(noreply)".
+    raw_tokens = [t for t in raw_tokens if not re.fullmatch(r"[\[(].+[\])]", t)]
+    while raw_tokens and raw_tokens[-1].lower() in _DISPLAY_BRAND_TAIL_NOISE:
+        raw_tokens.pop()
+    if not raw_tokens:
+        return ""
+    label = " ".join(raw_tokens[:3])
+    return label if _has_latin(label) else ""
 
 
 def extract_first_name(sender_header: str) -> str:
@@ -167,7 +492,7 @@ def extract_first_name(sender_header: str) -> str:
     English reply (`Dear Zhang,` rather than `Dear 张老师,`).
 
     Returns "" when nothing usable is parseable so the caller can pick
-    its own fallback (e.g. "there").
+    its own fallback (e.g. `Hello,`).
     """
     if not sender_header or not sender_header.strip():
         return ""

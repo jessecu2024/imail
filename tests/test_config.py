@@ -27,12 +27,19 @@ def test_loads_dotenv_from_config_dir(tmp_path: Path, monkeypatch: pytest.Monkey
     config_dir.mkdir()
     (config_dir / ".env").write_text("DEEPSEEK_API_KEY=sk-from-config-dir\n")
     monkeypatch.setenv("IMAIL_CONFIG_DIR", str(config_dir))
+    # chdir BEFORE the first import of imail.config — otherwise the module's
+    # top-level `_load_dotenv_files()` reads the developer's real CWD `.env`
+    # (e.g. ~/projects/imail/.env) and primes os.environ with the real
+    # DEEPSEEK_API_KEY. After that, the in-test call wouldn't be able to
+    # overwrite (load_dotenv defaults to override=False).
+    monkeypatch.chdir(tmp_path)
 
-    # Re-run the loader directly — the module-import call already ran with a
-    # different env, but the function is idempotent and safe to invoke again.
     from imail.config import _load_dotenv_files
 
-    monkeypatch.chdir(tmp_path)  # ensure no stray CWD .env interferes
+    # The import above may already have populated the env from the fake
+    # config-dir .env. Force a clean slate so the assertion measures the
+    # in-test call specifically.
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     _load_dotenv_files()
 
     assert os.environ["DEEPSEEK_API_KEY"] == "sk-from-config-dir"
@@ -53,6 +60,7 @@ def test_cwd_dotenv_wins_over_config_dir(tmp_path: Path, monkeypatch: pytest.Mon
 
     from imail.config import _load_dotenv_files
 
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     _load_dotenv_files()
 
     assert os.environ["DEEPSEEK_API_KEY"] == "sk-from-cwd"
