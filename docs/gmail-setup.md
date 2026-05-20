@@ -3,23 +3,23 @@
 `imail` reads your inbox and drafts replies on your behalf. It needs an OAuth
 **desktop-app** client. You only need to do this once.
 
-## 1. Enable the Gmail API
+## 1. Create a project
 
 1. Open <https://console.cloud.google.com/>.
-2. Create a new project (top bar → project picker → **New Project**), e.g. `imail-my`.
-3. Search bar → **Gmail API** → **Enable**.
+2. Top bar → project picker → **New Project**, name it `imail-my`.
 
 ## 2. Configure the OAuth consent screen
 
-1. Sidebar → **APIs & Services → OAuth consent screen** (newer Cloud
-   Console calls it **Auth Platform**; same place).
+1. Top **search bar** → type `Auth Platform` → open it. (Older Cloud
+   Console projects show this under sidebar → APIs & Services → OAuth
+   consent screen; same place, just renamed.)
 2. If you see a **Get started** button, click it — Google's new
    wizard splits the form across steps. Otherwise the old single
    page works the same way.
 3. Fill in:
    - **App name**: `imail-my` (NOT `imail` — Google rejects names
-     that look too similar to "Gmail" with "request failed because the
-     app name does not meet Google's requirements").
+     that look too similar to "Gmail" with "request failed because
+     the app name does not meet Google's requirements").
    - **User support email**: your own Gmail.
    - **Audience / User type**: **External**.
    - **Contact information**: your email.
@@ -30,13 +30,21 @@
 > Leaving the app in *Testing* is fine — only the test users you added
 > can sign in.
 
-## 3. Create OAuth client credentials
+## 3. Enable the Gmail API
+
+Top **search bar** → `Gmail API` → **Enable**.
+
+> Enable the API *after* the consent screen exists — newer Cloud
+> Console requires consent to be configured before it'll let you
+> create credentials that hit the API.
+
+## 4. Create OAuth client credentials
 
 1. Sidebar → **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
 2. Application type: **Desktop app**. Name: `imail-cli`.
 3. Click **Create**, then **Download JSON**.
 
-## 4. Drop the file in place
+## 5. Drop the file in place
 
 ```bash
 mkdir -p ~/.config/imail
@@ -45,7 +53,7 @@ mv ~/Downloads/client_secret_*.json ~/.config/imail/credentials.json
 
 (or set `GMAIL_CREDENTIALS_PATH` in your `.env` to point elsewhere)
 
-## 5. First run
+## 6. First run
 
 ```bash
 uv run imail
