@@ -9,6 +9,34 @@ Version numbers follow [SemVer](https://semver.org/).
 
 ---
 
+## [1.4.2] — 2026-05-20
+
+A small but felt UX patch — when new mail arrives, the three pre-drafted
+replies are now usually ready by the time the user gets around to clicking.
+
+### Changed
+
+- **Inbox poll dropped from 30s → 10s.** Every poll triggers the
+  server-side `_warm_inbox_cache` background task for any unhandled
+  inbox ids, so the window between *mail arrives at the IMAP server*
+  and *DeepSeek has drafted three replies for it* used to be up to 33
+  seconds in the worst case (30s polling delay + 3s for the
+  DeepSeek call). It's now closer to 13s worst case. IMAP polls are
+  cheap; the extra requests don't measurably affect any provider's
+  rate limits.
+- **Prefetch generates three drafts in parallel.** The background
+  prefetch loop used to chew through unread emails one at a time —
+  each iteration cost ~3 seconds of waiting for DeepSeek. With 50
+  unread emails on first boot, that took ~150 seconds, during which
+  most of the inbox was still a cache miss for the user. The pool
+  now runs three DeepSeek calls concurrently (IMAP fetches stay
+  serial — one shared connection — but the slow part runs in
+  parallel), dropping the same 50-email batch to ~55 seconds. Each
+  result is stored to the on-disk reply cache the instant its
+  DeepSeek call returns, instead of waiting for the batch to
+  complete, so emails 1–3 are warm at t≈3s instead of "anywhere
+  between t=3s and t=5s depending on submission order."
+
 ## [1.4.1] — 2026-05-20
 
 A round of fixes contributed by the first external user

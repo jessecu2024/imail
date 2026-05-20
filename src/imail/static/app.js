@@ -280,7 +280,10 @@ function app() {
        interval. Used to fire a notification when truly new mail arrives. */
     _seenIds: new Set(),
     _pollTimer: null,
-    _pollMs: 30000,
+    // 10s: every poll triggers server-side prefetch (_warm_inbox_cache) for any
+    // unhandled inbox ids — short interval = small window between "mail arrives"
+    // and "DeepSeek has drafted three replies for it." IMAP polls are cheap.
+    _pollMs: 10000,
 
     /* Visible-without-DevTools debug counter */
     debug: { lastClick: "" },
