@@ -79,6 +79,13 @@ const STRINGS = {
     delete_word: "Delete",
     coming_soon: "Coming soon",
     no_flagged: "No flagged messages. Click the flag icon on any row to add one here.",
+    compose_to: "To",
+    compose_subject: "Subject",
+    compose_body: "Body",
+    compose_send: "Send",
+    compose_cancel: "Cancel",
+    compose_required: "To and body are required.",
+    sent_ok: "Sent.",
     // settings row labels
     row_format: "Format",
     row_signature: "Signature",
@@ -171,6 +178,13 @@ const STRINGS = {
     delete_word: "删除",
     coming_soon: "即将推出",
     no_flagged: "还没有加红旗的邮件。点任意邮件右侧的旗子图标加进来。",
+    compose_to: "收件人",
+    compose_subject: "主题",
+    compose_body: "正文",
+    compose_send: "发送",
+    compose_cancel: "取消",
+    compose_required: "请填写收件人和正文。",
+    sent_ok: "已发送。",
     row_format: "格式",
     row_signature: "签名",
     row_language: "语言",
@@ -209,6 +223,8 @@ function app() {
       return browser.startsWith("zh") ? "zh" : "en";
     })(),
     status: { llm_configured: false, model: "", signoff: "", config_dir: "" },
+    compose: null,
+    _composeReturnView: "welcome",
 
     accounts: [],
     expandedAccount: null,  // account id whose folder list is shown in the sidebar
@@ -746,14 +762,80 @@ function app() {
       if (f === "inbox") return this.deleteSelectedInbox();
     },
 
-    /* ---------- Toolbar handlers on the message-detail view ---------- */
-    composeReply(_mode) {
-      // Reply / Reply all / Forward aren't built yet — the heavy lift is a
-      // proper compose view + send wiring. Surface a clear "coming soon"
-      // banner for now so the toolbar still feels real and the user
-      // discovers the buttons.
-      this.message = `✦ ${this.t("coming_soon")}`;
-      setTimeout(() => { if (this.message.startsWith("✦")) this.message = ""; }, 2500);
+    /* ---------- Toolbar handlers on the message-detail / triage views ---------- */
+    composeReply(mode) {
+      // Open the compose view pre-filled for Reply / Reply all / Forward.
+      // The source message is whichever one is currently open: triage.current
+      // in the triage view, selectedMessage in the message detail view.
+      const src =
+        this.view === "triage" && this.triage.current
+          ? this.triage.current.email
+          : this.selectedMessage;
+      if (!src) return;
+
+      const sender = src.sender || "";
+      const subjectStripped = (src.subject || "").replace(/^(re|fw|fwd|回复|转发)\s*:\s*/i, "");
+
+      let to = "";
+      let subject = "";
+      let body = "";
+      if (mode === "reply" || mode === "reply_all") {
+        // Reply all = reply, until Cc parsing is added. To keep the UI
+        // honest the button still says "Reply all" but the prefill is
+        // identical for now.
+        to = sender;
+        subject = "Re: " + subjectStripped;
+        body = "";
+      } else if (mode === "forward") {
+        to = "";
+        subject = "Fwd: " + subjectStripped;
+        const original = src.body || "";
+        const quoted = original
+          .split("\n")
+          .map((line) => "> " + line)
+          .join("\n");
+        body = `\n\n---------- Forwarded message ----------\nFrom: ${sender}\nDate: ${src.date || ""}\nSubject: ${src.subject || ""}\n\n${quoted}\n`;
+      } else {
+        return;
+      }
+
+      this.compose = { to, subject, body, mode, sending: false };
+      this._composeReturnView = this.view;
+      this.view = "compose";
+    },
+
+    async composeSend() {
+      if (!this.selectedAccount || !this.compose) return;
+      if (!this.compose.to.trim() || !this.compose.body.trim()) {
+        this.message = "Error: " + (this.t("compose_required") || "To and body required.");
+        return;
+      }
+      this.compose.sending = true;
+      try {
+        const res = await fetch("/api/compose/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            account_id: this.selectedAccount.id,
+            to: this.compose.to,
+            subject: this.compose.subject,
+            body: this.compose.body,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        this.message = `✓ ${this.t("sent_ok") || "Sent."}`;
+        this.compose = null;
+        this.view = this._composeReturnView || "welcome";
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        if (this.compose) this.compose.sending = false;
+      }
+    },
+
+    composeCancel() {
+      this.compose = null;
+      this.view = this._composeReturnView || "welcome";
     },
 
     async toggleFlagTriage() {

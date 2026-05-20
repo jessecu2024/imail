@@ -114,6 +114,35 @@
       </section>
 
       <!-- =============== SETTINGS =============== -->
+      <!-- =============== COMPOSE (Reply / Reply all / Forward) =============== -->
+      <section x-show="view === 'compose'" class="compose">
+        <button class="link-back" @click="composeCancel()" x-text="t('back')"></button>
+        <h1 class="page-title" x-text="compose && compose.mode === 'forward' ? t('forward') : (compose && compose.mode === 'reply_all' ? t('reply_all') : t('reply'))"></h1>
+
+        <template x-if="compose">
+          <div class="compose-form">
+            <label class="compose-row">
+              <span class="compose-label" x-text="t('compose_to')"></span>
+              <input type="email" x-model="compose.to" placeholder="name@example.com" autofocus />
+            </label>
+            <label class="compose-row">
+              <span class="compose-label" x-text="t('compose_subject')"></span>
+              <input type="text" x-model="compose.subject" />
+            </label>
+            <label class="compose-row compose-body">
+              <span class="compose-label" x-text="t('compose_body')"></span>
+              <textarea x-model="compose.body" rows="16" @keydown.meta.enter="composeSend()" @keydown.ctrl.enter="composeSend()"></textarea>
+            </label>
+            <div class="compose-actions">
+              <button class="primary" @click="composeSend()" :disabled="compose.sending || !compose.to || !compose.body">
+                📤 <span x-text="t('compose_send')"></span> <kbd class="dim">⌘↵</kbd>
+              </button>
+              <button class="link" @click="composeCancel()" :disabled="compose.sending" x-text="t('compose_cancel')"></button>
+            </div>
+          </div>
+        </template>
+      </section>
+
       <section x-show="view === 'settings'" class="settings">
         <button class="link-back" @click="view = accounts.length ? 'welcome' : 'add'" x-text="t('back')"></button>
         <h1 class="page-title" x-text="t('settings')"></h1>

@@ -500,6 +500,29 @@ class ImapProvider:
         reply["In-Reply-To"] = email_msg.id
         reply["References"] = email_msg.id
 
+        self._smtp_send(reply)
+
+    def send_compose(self, to: str, subject: str, body: str) -> None:
+        """Send an arbitrary message via SMTP (for Reply / Forward UI where
+        the user specifies the recipient + subject + body explicitly)."""
+        if not self._smtp_host:
+            raise ProviderError(
+                "SMTP host is not configured for this account. "
+                "Pick a provider preset (Outlook/163/QQ/...) or re-add the account "
+                "with explicit SMTP settings."
+            )
+        if not to.strip():
+            raise ProviderError("Recipient (To:) is empty.")
+        msg = EmailMessage()
+        msg.set_content(body)
+        msg["From"] = self._username
+        msg["To"] = to
+        msg["Subject"] = subject or "(no subject)"
+        self._smtp_send(msg)
+
+    def _smtp_send(self, msg: EmailMessage) -> None:
+        """Shared SMTP send path used by both `send` and `send_compose`."""
+
         try:
             if self._smtp_use_ssl:
                 smtp: smtplib.SMTP = smtplib.SMTP_SSL(self._smtp_host, self._smtp_port, timeout=30)
@@ -508,7 +531,7 @@ class ImapProvider:
                 smtp.starttls()
             try:
                 smtp.login(self._username, self._password)
-                smtp.send_message(reply)
+                smtp.send_message(msg)
             finally:
                 with contextlib.suppress(smtplib.SMTPException, OSError):
                     smtp.quit()

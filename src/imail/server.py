@@ -492,9 +492,7 @@ def list_folder(
     # through the existing code path. Apple Mail / Outlook do this too —
     # a flagged email in Sent should be findable from the Flagged
     # mailbox without having to remember which folder it lives in.
-    actual_kind: Literal["inbox", "drafts", "sent", "junk"] = (
-        "inbox" if kind == "flagged" else kind
-    )
+    actual_kind: Literal["inbox", "drafts", "sent", "junk"] = "inbox" if kind == "flagged" else kind
 
     if kind == "flagged":
         msgs: list[EmailMsg] = []
@@ -756,6 +754,28 @@ def edit_draft(account_id: str, message_id: str, req: EditDraftRequest) -> dict[
 
 class FlagRequest(BaseModel):
     flagged: bool
+
+
+class ComposeSendRequest(BaseModel):
+    account_id: str
+    to: str = Field(..., min_length=1)
+    subject: str = ""
+    body: str = Field(..., min_length=1)
+
+
+@app.post("/api/compose/send")
+def compose_send(req: ComposeSendRequest) -> dict[str, str]:
+    """Send a free-form message (Reply / Reply all / Forward from the UI)."""
+    store = AccountStore.load()
+    account = store.get(req.account_id)
+    if account is None:
+        raise HTTPException(404, "Account not found.")
+    try:
+        with use_provider(req.account_id) as provider:
+            provider.send_compose(req.to, req.subject, req.body)
+    except ProviderError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {"status": "sent"}
 
 
 @app.post("/api/messages/{account_id}/{kind}/{message_id}/flag")

@@ -46,6 +46,11 @@ class MailProvider(Protocol):
     def set_flagged(self, kind: FolderKind, message_id: str, flagged: bool) -> None:
         """Toggle the IMAP \\Flagged / Gmail STARRED flag for a message."""
 
+    def send_compose(self, to: str, subject: str, body: str) -> None:
+        """Send an arbitrary message — explicit recipient + subject + body.
+        Used by the Reply / Reply-all / Forward UI where the user fills the
+        compose form themselves rather than picking from drafted replies."""
+
     def delete_message(self, kind: FolderKind, message_id: str) -> None:
         """Delete a message in the given folder. Mainly for drafts."""
 

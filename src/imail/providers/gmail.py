@@ -195,6 +195,20 @@ class GmailProvider:
             body={"raw": raw, "threadId": email.thread_id},
         ).execute()
 
+    def send_compose(self, to: str, subject: str, body: str) -> None:
+        """Send an arbitrary message via the Gmail API."""
+        if not to.strip():
+            raise ProviderError("Recipient (To:) is empty.")
+        from base64 import urlsafe_b64encode
+        from email.message import EmailMessage as _EmailMessage
+
+        msg = _EmailMessage()
+        msg.set_content(body)
+        msg["To"] = to
+        msg["Subject"] = subject or "(no subject)"
+        raw = urlsafe_b64encode(bytes(msg)).decode("ascii")
+        self._service.users().messages().send(userId="me", body={"raw": raw}).execute()
+
     def mark_read(self, email: EmailMsg) -> None:
         self._service.users().messages().modify(
             userId="me", id=email.id, body={"removeLabelIds": ["UNREAD"]}
