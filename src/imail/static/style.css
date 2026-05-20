@@ -243,14 +243,18 @@ body {
   font-weight: 700;
   color: var(--text);
 }
+/* Unread, not-yet-replied indicator: red dot before the sender.
+   Same red as the logo's "i" dot — uses --warn so it tracks the brand
+   palette and stays high-contrast on the white row background. */
 .message-row.unread:not(.replied) .from::before {
   content: "";
   display: inline-block;
-  width: 0.55rem;
-  height: 0.55rem;
-  margin-right: 0.45rem;
+  width: 0.65rem;
+  height: 0.65rem;
+  margin-right: 0.5rem;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--warn);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
   vertical-align: middle;
 }
 .message-row.unread:not(.replied) .row-subject { font-weight: 700; color: var(--text); }

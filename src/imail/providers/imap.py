@@ -213,7 +213,7 @@ class ImapProvider:
                 continue
             messages.append(self._parse_message(uid, raw_body))
 
-        return messages
+        return sorted(messages, key=_uid_sort_key, reverse=True)
 
     def create_draft(self, email_msg: EmailMsg, body: str) -> str:
         conn = self._ensure_connected()
@@ -256,7 +256,14 @@ class ImapProvider:
     # Folder browsing (used by the sidebar UI)
     # ------------------------------------------------------------------
     def list_folder(self, kind: FolderKind, limit: int = 50) -> list[EmailMsg]:
-        """List recent messages in a folder. Bodies left empty — use fetch_message."""
+        """List recent messages in a folder. Bodies left empty — use fetch_message.
+
+        Results are sorted by UID descending (newest first). IMAP servers
+        return FETCH responses in their own internal order — usually
+        sequence-number ascending, i.e. oldest first — even when the
+        request lists the higher UIDs first. We re-sort explicitly so
+        the UI matches user expectation across Gmail / Outlook / 163.
+        """
         conn = self._ensure_connected()
         folder = self._get_folder(kind, conn)
         typ, _ = conn.select(folder, readonly=True)
@@ -280,7 +287,7 @@ class ImapProvider:
         if typ != "OK":
             raise ProviderError(f"IMAP envelope fetch in {folder} failed.")
 
-        return _parse_envelope_list(fetched)
+        return sorted(_parse_envelope_list(fetched), key=_uid_sort_key, reverse=True)
 
     def fetch_message(self, kind: FolderKind, message_id: str) -> EmailMsg:
         """Return one message with full body.
@@ -398,7 +405,7 @@ class ImapProvider:
         )
         if typ != "OK":
             raise ProviderError("IMAP envelope fetch failed for search results.")
-        return _parse_envelope_list(fetched)
+        return sorted(_parse_envelope_list(fetched), key=_uid_sort_key, reverse=True)
 
     def update_draft(self, message_id: str, new_body: str) -> str:
         """Replace a draft's body by appending a new version and deleting the old.
@@ -647,6 +654,17 @@ def _extract_flags(envelope_header: bytes) -> set[str]:
     if end == -1:
         return set()
     return set(text[idx + len("FLAGS (") : end].split())
+
+
+def _uid_sort_key(m: EmailMsg) -> int:
+    """UIDs are monotonically increasing per-folder, so an integer-sort
+    (desc) gives newest-first ordering. Guard against the rare edge case
+    of a non-numeric id (shouldn't happen with imaplib, but staying
+    defensive keeps a single bad header from sinking the whole listing)."""
+    try:
+        return int(m.id)
+    except (ValueError, TypeError):
+        return 0
 
 
 def _parse_envelope_list(fetched: Sequence[object]) -> list[EmailMsg]:
