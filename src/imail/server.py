@@ -21,6 +21,7 @@ import logging
 import threading
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
@@ -314,7 +315,8 @@ def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
                         logger.warning("Prefetch fetch failed for %s/%s: %s", account_id, mid, exc)
                         continue
                 fut = pool.submit(generator.generate, email_msg)
-                fut.add_done_callback(lambda f, mid=mid, em=email_msg: _on_complete(f, mid, em))
+                # partial (not lambda) so mypy can infer the callback signature.
+                fut.add_done_callback(partial(_on_complete, mid=mid, em=email_msg))
             # pool.__exit__ joins all workers before continuing
     finally:
         with contextlib.suppress(Exception):
