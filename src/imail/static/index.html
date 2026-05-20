@@ -306,16 +306,21 @@
         <section class="card" x-show="chosen === 'gmail'">
           <h2>Gmail</h2>
           <p class="muted">
-            Gmail uses OAuth. You need a one-time <code>credentials.json</code> from
-            Google Cloud Console (see
-            <a href="https://github.com/jessecu2024/imail/blob/main/docs/gmail-setup.md" target="_blank">setup guide</a>).
+            Gmail uses OAuth. Follow the
+            <a href="https://github.com/jessecu2024/imail/blob/main/docs/gmail-setup.md" target="_blank">5-minute setup guide</a>
+            once, then paste the JSON file path here.
           </p>
           <label>Label
             <input type="text" x-model="form.gmail.label" placeholder="Work · Gmail" />
           </label>
-          <label>Path to credentials.json
+          <label>Path to the credentials JSON
             <input type="text" x-model="form.gmail.credentials_path"
-                   placeholder="/Users/you/.config/imail/credentials.json" />
+                   placeholder="~/Downloads/client_secret_XXXX.json" />
+            <small class="muted">
+              The file Google Cloud Console gave you after creating an
+              OAuth client. Absolute path — drag the file into Terminal
+              to copy it, or right-click in Finder → <em>Copy as Pathname</em>.
+            </small>
           </label>
           <button class="primary" @click="addGmail()" :disabled="busy">
             <span x-text="busy ? 'Adding…' : 'Add Gmail account'"></span>

@@ -41,24 +41,21 @@
 3. Application type: **Desktop app**. Name: `imail-cli`.
 4. Click **Create**, then **Download JSON**.
 
-## 4. Drop the file in place
+## 4. Add the account in imail
 
-```bash
-mkdir -p ~/.config/imail
-mv ~/Downloads/client_secret_*.json ~/.config/imail/credentials.json
-```
+1. Run `imail` (or open `http://127.0.0.1:8765` if it's already running)
+   → sidebar **+ Add account** → **Gmail**.
+2. **Path to credentials.json**: paste the absolute path to the JSON
+   file you just downloaded — usually
+   `/Users/<you>/Downloads/client_secret_<long-string>.json`. (Drag
+   the file into the Terminal to copy its path, or use Finder →
+   right-click → **Copy as Pathname**.)
+3. Click **Add Gmail account**.
+4. A browser tab opens; sign in with the Gmail account you added as a
+   test user and grant the requested scopes. Token is cached to
+   `~/.config/imail/token-<account-id>.json`; subsequent runs are silent.
 
-(or set `GMAIL_CREDENTIALS_PATH` in your `.env` to point elsewhere)
-
-## 5. First run
-
-```bash
-uv run imail
-```
-
-A browser tab will open; sign in with the Gmail account you added as a test user
-and grant the requested scopes. A token is cached to
-`~/.config/imail/token.json` — subsequent runs are silent.
+That's it — you should be in the inbox triage view.
 
 ## Scopes
 
