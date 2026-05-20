@@ -120,3 +120,10 @@ def test_system_prompt_requires_best_regards_closing() -> None:
 def test_system_prompt_requires_english_only_replies() -> None:
     """Replies are always English regardless of incoming language."""
     assert "ENTIRE reply in English" in SYSTEM_PROMPT
+
+
+def test_system_prompt_instructs_reading_conversation_history() -> None:
+    """The prompt must tell the model to read quoted earlier messages so
+    it doesn't re-promise actions the user has already completed."""
+    assert "CONVERSATION HISTORY" in SYSTEM_PROMPT
+    assert "Do NOT redo or re-promise" in SYSTEM_PROMPT
