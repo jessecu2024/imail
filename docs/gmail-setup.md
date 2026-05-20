@@ -6,7 +6,7 @@
 ## 1. Enable the Gmail API
 
 1. Open <https://console.cloud.google.com/>.
-2. Create a new project (top bar → project picker → **New Project**), e.g. `imail-triage`.
+2. Create a new project (top bar → project picker → **New Project**), e.g. `imail-my`.
 3. Search bar → **Gmail API** → **Enable**.
 
 ## 2. Configure the OAuth consent screen
@@ -17,7 +17,7 @@
    wizard splits the form across steps. Otherwise the old single
    page works the same way.
 3. Fill in:
-   - **App name**: `imail-triage` (NOT `imail` — Google rejects names
+   - **App name**: `imail-my` (NOT `imail` — Google rejects names
      that look too similar to "Gmail" with "request failed because the
      app name does not meet Google's requirements").
    - **User support email**: your own Gmail.
