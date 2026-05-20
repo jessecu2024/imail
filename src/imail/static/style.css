@@ -228,7 +228,32 @@ body {
   transition: border-color 100ms ease, background 100ms ease;
 }
 .message-row:hover { border-color: var(--accent); background: var(--bg-3); }
-.message-row.unread { border-left-color: var(--accent); }
+
+/* Unread *and not yet replied* = the only state that should look "new"
+   to the user. Bold left stripe + bold text + a small dot indicator
+   ahead of the sender. Replied takes precedence over unread visually
+   (see the replied rule farther down) — the user has already handled
+   it, so no "needs attention" cue. */
+.message-row.unread:not(.replied) {
+  background: #ffffff;
+  border-left-color: var(--accent);
+  border-left-width: 3px;
+}
+.message-row.unread:not(.replied) .from {
+  font-weight: 700;
+  color: var(--text);
+}
+.message-row.unread:not(.replied) .from::before {
+  content: "";
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+.message-row.unread:not(.replied) .row-subject { font-weight: 700; color: var(--text); }
 .message-row .row-top {
   display: flex;
   justify-content: space-between;
@@ -1132,6 +1157,51 @@ kbd {
 }
 .check-list code { background: var(--bg-3); padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.82rem; }
 .check-list strong { color: var(--text); }
+
+/* "In reply to" card — shows the original incoming email below a reply
+   when viewing a local: Sent entry. Gmail-style threaded view. */
+.in-reply-to-card {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.in-reply-header {
+  padding: 0.5rem 1rem;
+  background: var(--accent-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.in-reply-meta {
+  padding: 0.7rem 1rem 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.88rem;
+}
+.in-reply-meta .muted { margin-right: 0.4rem; }
+.in-reply-subject {
+  margin-top: 0.2rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.in-reply-body {
+  margin: 0;
+  padding: 0.6rem 1rem 1rem;
+  background: var(--bg-2);
+  font-family: inherit;
+  font-size: 0.92rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-soft);
+}
 
 /* Language picker buttons in Settings → Language. */
 .lang-row {

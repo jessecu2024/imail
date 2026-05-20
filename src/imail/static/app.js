@@ -69,6 +69,7 @@ const STRINGS = {
     // password-managed buttons
     delete_local_record: "Delete local saved-reply record",
     delete_with_sync: "Delete (also removes from server + all devices)",
+    replying_to: "In reply to",
     // settings row labels
     row_format: "Format",
     row_signature: "Signature",
@@ -151,6 +152,7 @@ const STRINGS = {
     remove: "删除",
     delete_local_record: "删除本地记录",
     delete_with_sync: "删除(同时从服务器和所有设备删除)",
+    replying_to: "回复的原邮件",
     row_format: "格式",
     row_signature: "签名",
     row_language: "语言",
@@ -410,10 +412,14 @@ function app() {
        sidebar can show a small badge. Counts from the in-memory messageList
        to avoid extra network round-trips. */
     folderBadge(kind) {
+      // Badge = "things still requiring action". A row that's been replied
+      // to is NOT actionable, even if IMAP's \Seen flag for it hasn't
+      // synced yet — otherwise the user sees "1" but clicking through to
+      // the listing only reveals a row already marked Replied.
       if (!this.selectedAccount) return 0;
       if (this.selectedFolder !== kind) return 0;
       if (kind === "inbox") {
-        return this.messageList.filter((m) => m.unread).length;
+        return this.messageList.filter((m) => m.unread && !m.replied).length;
       }
       return 0;
     },

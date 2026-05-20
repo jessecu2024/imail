@@ -437,6 +437,23 @@
           </article>
         </template>
 
+        <!-- For a locally-cached Sent row (a reply imail saved), surface the
+             original incoming email below the reply so the user can see
+             which message this reply was answering. -->
+        <template x-if="selectedMessage && selectedFolder === 'sent' && selectedMessage.in_reply_to">
+          <article class="in-reply-to-card">
+            <header class="in-reply-header">
+              <span class="muted small" x-text="t('replying_to') || 'In reply to'"></span>
+            </header>
+            <div class="in-reply-meta">
+              <div><span class="muted" x-text="t('from')"></span> <strong x-text="selectedMessage.in_reply_to.sender"></strong></div>
+              <div><span class="muted" x-text="t('date')"></span> <span x-text="longDate(selectedMessage.in_reply_to.date)"></span></div>
+              <div class="in-reply-subject" x-text="selectedMessage.in_reply_to.subject"></div>
+            </div>
+            <pre class="email-body in-reply-body" x-text="selectedMessage.in_reply_to.body || '(original body was not saved)'"></pre>
+          </article>
+        </template>
+
         <template x-if="selectedMessage && selectedFolder === 'drafts'">
           <div class="draft-editor">
             <div class="chosen-card">

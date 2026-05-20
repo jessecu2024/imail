@@ -369,6 +369,10 @@ class MessageDetail(BaseModel):
     subject: str
     body: str
     date: str
+    # When this row is a locally-cached "I replied to this" entry in Sent,
+    # surface the original incoming email below the reply so the user can
+    # remember *what* they were replying to. None for regular IMAP rows.
+    in_reply_to: dict[str, str] | None = None
 
 
 class TriageNextResponse(BaseModel):
@@ -548,12 +552,19 @@ def get_message(
         entry = _store_for(account_id).get_done(original_id)
         if entry is None:
             raise HTTPException(404, "Local sent entry not found.")
+        in_reply_to = {
+            "sender": entry.sender,
+            "subject": entry.subject,
+            "date": entry.date,
+            "body": entry.body or "",
+        }
         return MessageDetail(
             id=message_id,
             sender=entry.sender,
             subject=_reply_subject(entry.subject),
             body=entry.chosen_reply,
             date=entry.replied_at,
+            in_reply_to=in_reply_to,
         )
 
     # Cache check first — the background warmup on list_folder usually has
