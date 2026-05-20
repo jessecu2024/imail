@@ -66,18 +66,21 @@ async def _json_exception_handler(_request: object, exc: Exception) -> JSONRespo
 # Session state — single in-process triage session at a time.
 # ----------------------------------------------------------------------
 class _Session:
-    def __init__(self, account: Account, provider: MailProvider, generator: ReplyGenerator) -> None:
+    """A single open triage session. Holds the current email + the queue but
+    NOT a dedicated IMAP provider — operations look up the per-account
+    pooled connection (`use_provider`) on demand. The pool persists across
+    sessions so subsequent clicks pay no IMAP-login cost.
+    """
+
+    def __init__(self, account: Account, generator: ReplyGenerator) -> None:
         self.account = account
-        self.provider = provider
         self.generator = generator
         self.queue: list[EmailMsg] = []
         self.current: EmailMsg | None = None
 
     def close(self) -> None:
-        try:
-            self.provider.close()
-        except Exception:
-            logger.exception("provider close failed")
+        # Pool ownership lives outside the session — nothing to clean up here.
+        return None
 
 
 _session: _Session | None = None
@@ -833,8 +836,8 @@ def triage_start(req: StartRequest) -> dict[str, int]:
         raise HTTPException(404, "Account not found.")
 
     try:
-        provider = open_provider(account)
-        emails = provider.fetch_unread(limit=req.limit)
+        with use_provider(req.account_id) as provider:
+            emails = provider.fetch_unread(limit=req.limit)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
     except Exception as exc:
@@ -847,7 +850,7 @@ def triage_start(req: StartRequest) -> dict[str, int]:
         user_signoff=settings.user_signoff,
         base_url=settings.base_url,
     )
-    _session = _Session(account=account, provider=provider, generator=generator)
+    _session = _Session(account=account, generator=generator)
     _session.queue = emails
     return {"queued": len(emails)}
 
@@ -889,12 +892,15 @@ def triage_next() -> TriageNextResponse:
 def triage_draft(req: DraftRequest) -> dict[str, str]:
     if _session is None or _session.current is None:
         raise HTTPException(400, "No email is currently being triaged.")
+    current = _session.current
+    account_id = _session.account.id
     try:
-        draft_id = _session.provider.create_draft(_session.current, req.body)
-        _session.provider.mark_read(_session.current)
+        with use_provider(account_id) as provider:
+            draft_id = provider.create_draft(current, req.body)
+            provider.mark_read(current)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
-    _store_for(_session.account.id).mark_done(_session.current.id, req.body, email=_session.current)
+    _store_for(account_id).mark_done(current.id, req.body, email=current)
     return {"draft_id": draft_id}
 
 
@@ -904,9 +910,13 @@ def triage_send(req: SendRequest) -> dict[str, str]:
     if _session is None or _session.current is None:
         raise HTTPException(400, "No email is currently being triaged.")
 
+    current = _session.current
+    account_id = _session.account.id
+
     # The send itself must succeed or we return an error.
     try:
-        _session.provider.send(_session.current, req.body)
+        with use_provider(account_id) as provider:
+            provider.send(current, req.body)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
 
@@ -915,10 +925,11 @@ def triage_send(req: SendRequest) -> dict[str, str]:
     # by the server (163/QQ in particular). We don't want to surface a "failed"
     # state to the user when the actual send went through.
     try:
-        _session.provider.mark_read(_session.current)
+        with use_provider(account_id) as provider:
+            provider.mark_read(current)
     except Exception as exc:
         logger.warning("mark_read after send failed (non-fatal): %s", exc)
-    _store_for(_session.account.id).mark_done(_session.current.id, req.body, email=_session.current)
+    _store_for(account_id).mark_done(current.id, req.body, email=current)
     return {"status": "sent"}
 
 
@@ -990,11 +1001,6 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
 
     cached = reply_store.get_pending(req.message_id) if reply_store is not None else None
 
-    try:
-        provider = open_provider(account)
-    except ProviderError as exc:
-        raise HTTPException(502, str(exc)) from exc
-
     generator = ReplyGenerator(
         api_key=settings.api_key,
         model=settings.model,
@@ -1003,39 +1009,48 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
     )
 
     if cached is not None:
+        # Pure cache hit — no IMAP fetch, no DeepSeek call, no provider
+        # open. Just reuse the email + replies that the prefetch already
+        # stored on disk. This is the path that takes 12 seconds without
+        # the pool, because every triage_single used to spin up a fresh
+        # IMAP login even when it had everything it needed in memory.
         email_msg, replies = cached.email, cached.trio
         logger.info(
             "Cache HIT for %s/%s — replies served from disk", req.account_id, req.message_id
         )
     else:
+        # Cold path: need IMAP fetch + a DeepSeek call. Use the pooled
+        # provider so subsequent clicks on different messages don't each
+        # pay the 1-2 s 163 login cost.
         try:
-            email_msg = provider.fetch_message(triage_kind, req.message_id)
+            with use_provider(req.account_id) as provider:
+                email_msg = provider.fetch_message(triage_kind, req.message_id)
         except ProviderError as exc:
-            provider.close()
             raise HTTPException(502, str(exc)) from exc
         try:
             replies = generator.generate(email_msg)
         except Exception as exc:
-            provider.close()
             raise HTTPException(502, f"Reply generation failed: {exc}") from exc
 
         # If live classification flags this as spam, push it out of inbox now.
         if is_inbox_like and replies.is_spam:
             with contextlib.suppress(ProviderError):
-                provider.move_message("inbox", "junk", req.message_id)
+                with use_provider(req.account_id) as provider:
+                    provider.move_message("inbox", "junk", req.message_id)
                 logger.info("Spam-moved on click: %s/%s", req.account_id, req.message_id)
         elif is_inbox_like and reply_store is not None:
             reply_store.put_pending(req.message_id, email_msg, replies)
 
     # Clicking through to triage is a "read" event — flip the IMAP \Seen
     # flag so other clients (163 webmail, phone) see the same state as
-    # the frontend optimistically does. Best-effort: a failed mark_read
-    # is non-fatal (some folders refuse STORE on idle connections).
-    if is_inbox_like:
-        with contextlib.suppress(Exception):
+    # the frontend optimistically does. Best-effort, via the pool, and
+    # only on a cold-path response: cache hits don't need a refresh,
+    # the original prefetch already marked it.
+    if is_inbox_like and cached is None:
+        with contextlib.suppress(Exception), use_provider(req.account_id) as provider:
             provider.mark_read(email_msg)
 
-    _session = _Session(account=account, provider=provider, generator=generator)
+    _session = _Session(account=account, generator=generator)
     _session.queue = []  # empty — no auto-advance after the user picks
     _session.current = email_msg
 
