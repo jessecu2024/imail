@@ -3,8 +3,8 @@ class Imail < Formula
 
   desc "Inbox triage as a local app: 3 LLM-drafted replies per email"
   homepage "https://github.com/jessecu2024/imail"
-  url "https://files.pythonhosted.org/packages/c8/dc/37281c8e3ee3b458062de4ab36f6ea8931810dabd12b0e66c2ce2f424a23/imail_cli-1.3.1.tar.gz"
-  sha256 "75bd084ac18f43d216b2dd8f37f161dc508806b742b30d28a80bbce57cdba8d8"
+  url "https://files.pythonhosted.org/packages/2a/85/1c44ffae73b3fabf9a0e7c73499ad462540ccc61d813c3b0b8f54f14308e/imail_cli-1.4.0.tar.gz"
+  sha256 "bd83dc5113b757e39c7c477afdfe015a5ad6029eb7f4d81b311497f84cb9f72e"
   license "AGPL-3.0-or-later"
 
   depends_on "python@3.12"
@@ -135,8 +135,8 @@ class Imail < Formula
     sha256 "38e5696342835b08fc116f30a25665b29531cda9d5d5643e9b81fc312385abd9"
   end
   resource "protobuf" do
-    url "https://files.pythonhosted.org/packages/6b/6b/a0e95cad1ad7cc3f2c6821fcab91671bd5b78bd42afb357bb4765f29bc41/protobuf-7.34.1.tar.gz"
-    sha256 "9ce42245e704cc5027be797c1db1eb93184d44d1cdd71811fb2d9b25ad541280"
+    url "https://files.pythonhosted.org/packages/60/fd/5b1491d9e4b586d621c54f4c36b888714164b6875f8d6afa3f9072906a51/protobuf-7.35.0.tar.gz"
+    sha256 "a2efd84605f41e559f1881b0912b44099d0a2ac9bf46b3474823f10fb393b0e6"
   end
   resource "pyasn1" do
     url "https://files.pythonhosted.org/packages/5c/5f/6583902b6f79b399c9c40674ac384fd9cd77805f9e6205075f828ef11fb2/pyasn1-0.6.3.tar.gz"
