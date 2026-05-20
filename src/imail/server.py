@@ -314,9 +314,7 @@ def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
                         logger.warning("Prefetch fetch failed for %s/%s: %s", account_id, mid, exc)
                         continue
                 fut = pool.submit(generator.generate, email_msg)
-                fut.add_done_callback(
-                    lambda f, mid=mid, em=email_msg: _on_complete(f, mid, em)
-                )
+                fut.add_done_callback(lambda f, mid=mid, em=email_msg: _on_complete(f, mid, em))
             # pool.__exit__ joins all workers before continuing
     finally:
         with contextlib.suppress(Exception):
