@@ -218,6 +218,7 @@ docs/
   imap-setup.md         Per-provider app-password steps
   forwarding-workflow.md Locked-tenant fallback (163 as relay)
   release.md            How to cut a PyPI release
+  troubleshooting.md    Recurring problems (macOS keychain after brew upgrade, …)
 ```
 
 ---
