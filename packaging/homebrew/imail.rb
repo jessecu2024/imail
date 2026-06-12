@@ -3,8 +3,8 @@ class Imail < Formula
 
   desc "Inbox triage as a local app: 3 LLM-drafted replies per email"
   homepage "https://github.com/jessecu2024/imail"
-  url "https://files.pythonhosted.org/packages/ae/c1/98ca229064015f7e28266c23cdb9b0d21acb8c39424c9b46c4abb5f23456/imail_cli-1.4.1.tar.gz"
-  sha256 "06ff85e0379dc82e3ff549e513ce5472dc27dfc0a84292568f42da9cc845a9b0"
+  url "https://files.pythonhosted.org/packages/d0/65/c8fbc072d2afb8ba67f7a0764e0844fe0eecf589bb3b63be944785a563c7/imail_cli-1.4.2.tar.gz"
+  sha256 "3c4ae2a895a778195b4d15820110adb27e9d64d89da5c83e54418485f6820451"
   license "AGPL-3.0-or-later"
 
   depends_on "python@3.12"
