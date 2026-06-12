@@ -36,12 +36,13 @@ from imail.providers.base import EmailMsg, MailProvider, ProviderError
 from imail.providers.imap import PRESETS
 from imail.reply_generator import ReplyGenerator, ReplyTrio
 from imail.reply_store import ReplyStore
+from imail.spam_reason_store import SpamReasonStore
 
 logger = logging.getLogger("imail.server")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="imail", version="1.4.2")
+app = FastAPI(title="imail", version="1.4.3")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -162,6 +163,25 @@ def _store_for(account_id: str) -> ReplyStore:
             settings = load_settings(require_api_key=False)
             store = ReplyStore.for_account(settings.config_dir, account_id)
             _stores[account_id] = store
+        return store
+
+
+# Parallel store for "why was this classified as spam" — see
+# spam_reason_store.py. Kept separate from ReplyStore so junk-folder
+# rendering can look up reasons without touching the (much bigger)
+# replies cache, and so deleting a junk message can drop just the
+# reason entry.
+_spam_stores: dict[str, SpamReasonStore] = {}
+_spam_stores_lock = threading.Lock()
+
+
+def _spam_reasons_for(account_id: str) -> SpamReasonStore:
+    with _spam_stores_lock:
+        store = _spam_stores.get(account_id)
+        if store is None:
+            settings = load_settings(require_api_key=False)
+            store = SpamReasonStore.for_account(settings.config_dir, account_id)
+            _spam_stores[account_id] = store
         return store
 
 
@@ -287,14 +307,17 @@ def _warm_inbox_cache(account_id: str, message_ids: list[str]) -> None:
             if trio.is_spam:
                 # Model flagged spam — move it out of inbox so it stops
                 # cluttering the UI. Don't store the trio (user only sees
-                # the email in Junk).
+                # the email in Junk). Stash the LLM's one-line reason in
+                # the sidecar store so the Junk folder can show *why*.
                 try:
                     provider.move_message("inbox", "junk", mid)
+                    _spam_reasons_for(account_id).put(mid, trio.spam_reason)
                     logger.info(
-                        "Spam-moved to Junk: %s/%s subject=%r",
+                        "Spam-moved to Junk: %s/%s subject=%r reason=%r",
                         account_id,
                         mid,
                         em.subject,
+                        trio.spam_reason,
                     )
                 except ProviderError as exc:
                     logger.warning("Spam detected but move-to-junk failed for %s: %s", mid, exc)
@@ -428,6 +451,11 @@ class MessageSummary(BaseModel):
     # tells the frontend which real folder the row lives in so operations
     # (delete, flag, open) route to the correct backend kind.
     source_kind: str = ""
+    # Junk-only: one short sentence on why DeepSeek classified this as
+    # spam. Empty for non-junk rows and for junk rows the classifier
+    # didn't write a reason for (e.g. spam moved by an earlier imail
+    # version, before the field existed).
+    spam_reason: str = ""
 
 
 class MessageDetail(BaseModel):
@@ -644,6 +672,14 @@ def list_folder(
             ids = [m.id for m in msgs]
             background_tasks.add_task(_warm_folder_bodies, account_id, actual_kind, ids)
 
+    # Look up persisted spam reasons in one batch so the Junk listing can
+    # surface *why* each row landed there. Cheap for non-junk listings
+    # (returns an empty dict without touching disk if no junk ids
+    # match a stored reason).
+    spam_reasons: dict[str, str] = {}
+    if kind == "junk":
+        spam_reasons = _spam_reasons_for(account_id).bulk_get([m.id for m in msgs])
+
     summaries = [
         MessageSummary(
             id=m.id,
@@ -654,6 +690,7 @@ def list_folder(
             replied=(m.id in handled),
             flagged=m.flagged,
             source_kind=(source_kinds.get(m.id, "") if kind == "flagged" else ""),
+            spam_reason=spam_reasons.get(m.id, ""),
         )
         for m in msgs
     ]
@@ -905,7 +942,94 @@ def restore_from_junk(account_id: str, message_id: str) -> dict[str, bool]:
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
     _body_drop(account_id, "junk", message_id)
+    # Forget the persisted "why we thought this was spam" — the user just
+    # told us we were wrong.
+    _spam_reasons_for(account_id).drop(message_id)
     return {"ok": True}
+
+
+class JunkBulkRequest(BaseModel):
+    action: Literal["restore", "delete"]
+    message_ids: list[str]
+
+
+@app.post("/api/folders/{account_id}/junk/bulk")
+def junk_bulk(account_id: str, req: JunkBulkRequest) -> dict[str, object]:
+    """Restore or permanently delete several junk messages in one call.
+
+    Returns a per-id outcome so the UI can surface partial failures (one
+    flaky IMAP move shouldn't claim the whole batch failed). The shared
+    pool serialises IMAP commands on the per-account lock — we hold it
+    across the whole loop so other requests don't see a half-applied
+    batch.
+    """
+    if not req.message_ids:
+        return {"ok": True, "succeeded": [], "failed": []}
+
+    succeeded: list[str] = []
+    failed: list[dict[str, str]] = []
+    try:
+        with use_provider(account_id) as provider:
+            for mid in req.message_ids:
+                try:
+                    if req.action == "restore":
+                        provider.move_message("junk", "inbox", mid)
+                    else:  # delete
+                        provider.delete_message("junk", mid)
+                    succeeded.append(mid)
+                except ProviderError as exc:
+                    failed.append({"id": mid, "error": str(exc)})
+    except ProviderError as exc:
+        # Pool-level failure — none of the items were attempted.
+        raise HTTPException(502, str(exc)) from exc
+
+    # Cleanup local side state for whatever actually moved/deleted.
+    for mid in succeeded:
+        _body_drop(account_id, "junk", mid)
+    _spam_reasons_for(account_id).drop_many(succeeded)
+    logger.info(
+        "junk_bulk: account=%s action=%s ok=%d failed=%d",
+        account_id,
+        req.action,
+        len(succeeded),
+        len(failed),
+    )
+    return {"ok": not failed, "succeeded": succeeded, "failed": failed}
+
+
+@app.post("/api/folders/{account_id}/junk/empty")
+def junk_empty(account_id: str) -> dict[str, object]:
+    """Permanently delete every message currently in the account's Junk
+    folder. Re-lists Junk inside the lock so we don't race with new spam
+    that the prefetch task moves in mid-empty — only messages visible at
+    the start of this call are touched."""
+    succeeded: list[str] = []
+    failed: list[dict[str, str]] = []
+    try:
+        with use_provider(account_id) as provider:
+            try:
+                junk_msgs = provider.list_folder("junk", limit=500)
+            except ProviderError as exc:
+                raise HTTPException(502, str(exc)) from exc
+            for m in junk_msgs:
+                try:
+                    provider.delete_message("junk", m.id)
+                    succeeded.append(m.id)
+                except ProviderError as exc:
+                    failed.append({"id": m.id, "error": str(exc)})
+    except ProviderError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+    for mid in succeeded:
+        _body_drop(account_id, "junk", mid)
+    _spam_reasons_for(account_id).drop_many(succeeded)
+    logger.info(
+        "junk_empty: account=%s ok=%d failed=%d",
+        account_id,
+        len(succeeded),
+        len(failed),
+    )
+    return {"ok": not failed, "succeeded": succeeded, "failed": failed}
 
 
 # ----------------------------------------------------------------------
@@ -1126,7 +1250,13 @@ def triage_single(req: SingleTriageRequest) -> TriageNextResponse:
             with contextlib.suppress(ProviderError):
                 with use_provider(req.account_id) as provider:
                     provider.move_message("inbox", "junk", req.message_id)
-                logger.info("Spam-moved on click: %s/%s", req.account_id, req.message_id)
+                _spam_reasons_for(req.account_id).put(req.message_id, replies.spam_reason)
+                logger.info(
+                    "Spam-moved on click: %s/%s reason=%r",
+                    req.account_id,
+                    req.message_id,
+                    replies.spam_reason,
+                )
         elif is_inbox_like and reply_store is not None:
             reply_store.put_pending(req.message_id, email_msg, replies)
 

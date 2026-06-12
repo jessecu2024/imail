@@ -9,6 +9,42 @@ Version numbers follow [SemVer](https://semver.org/).
 
 ---
 
+## [1.4.3] — 2026-05-21
+
+Spam handling visibility + Junk folder bulk operations.
+
+### Added
+
+- **Spam classifier now gives one-sentence reasons.** The DeepSeek
+  prompt asks for a concise `spam_reason` whenever a message is
+  classified as spam (e.g. `"Generic marketing blast from Mailchimp"`,
+  `"Phishing — sender impersonates HSBC but reply-to is gmail.com"`,
+  `"Automated GitHub deploy notification, no reply expected"`). The
+  reason is persisted in a per-account sidecar at
+  `~/.config/imail/spam-reasons-<account-id>.json` and surfaced as a
+  single-line caption under each row in the Junk folder. Turns the
+  Junk folder from a black box into something the user can audit, and
+  makes false positives easy to spot at a glance. Pre-1.4.3 junk rows
+  have no reason recorded — those just render without the caption,
+  not as an error.
+- **Junk folder bulk operations.** A leading checkbox now appears on
+  every row in Junk; ticking ≥ 1 reveals an action bar with
+  *Restore N to Inbox* and *Delete N* buttons. The folder toolbar
+  also gains a one-click **Empty Junk** that wipes everything
+  currently visible. Both go through new endpoints —
+  `POST /api/folders/<acct>/junk/bulk` (`action: restore|delete`,
+  `message_ids: [...]`) and `POST /api/folders/<acct>/junk/empty` —
+  which serialise the IMAP commands on the pool's per-account lock,
+  drop the corresponding spam-reason sidecar entries, and return
+  per-id outcomes so the UI can surface partial failures instead of
+  claiming success for the whole batch.
+
+### Notes
+
+- Restoring a junk message from Inbox (single or bulk) now also
+  drops its persisted `spam_reason` — the user just told us we were
+  wrong, no point keeping the rationale around.
+
 ## [1.4.2] — 2026-05-20
 
 A small but felt UX patch — when new mail arrives, the three pre-drafted

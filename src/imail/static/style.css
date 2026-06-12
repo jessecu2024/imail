@@ -214,6 +214,76 @@ body {
   display: flex; flex-direction: column;
   gap: 0.1rem;
 }
+/* Each row is the row button + (junk-only) leading checkbox sibling. The
+   checkbox is `display:none` in non-junk views so this rule collapses
+   harmlessly to "just the button." */
+.message-list > li {
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.message-list > li > .message-row { flex: 1; min-width: 0; }
+
+/* Junk multi-select tick box. Square, custom-drawn so it can be larger
+   and easier to hit than a native checkbox. */
+.junk-select {
+  width: 20px; height: 20px;
+  border: 2px solid var(--border);
+  border-radius: 5px;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-2);
+  transition: border-color 100ms ease, background 100ms ease;
+}
+.junk-select:hover { border-color: var(--accent); }
+.junk-select.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.junk-select.on::after {
+  content: "✓";
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Bulk action bar for Junk — sticky strip below the folder header,
+   only visible when there's at least one row selected. */
+.bulk-bar {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 0.85rem;
+  margin: 0.35rem 0 0.5rem;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.bulk-bar .bulk-spacer { flex: 1; }
+
+/* Per-row "why this is spam" caption — small, muted, single line. The
+   `why:` pill makes it scannable when the user is skimming a long Junk
+   list looking for false positives. */
+.spam-reason {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--text-soft);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spam-reason-label {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-right: 0.3rem;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
 .message-row {
   width: 100%;
   background: var(--bg-2);

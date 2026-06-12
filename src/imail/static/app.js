@@ -231,6 +231,11 @@ function app() {
     selectedAccount: null,
     selectedFolder: null,   // 'inbox' | 'drafts' | 'sent'
 
+    /* Junk multi-select: ids ticked for bulk Restore / Delete. Reset on
+       every folder switch + after a successful bulk action. Kept as a
+       plain object (not a Set) so Alpine's reactivity tracks updates. */
+    junkSelection: {},
+
     /* Add-account form state */
     chosen: "",
     providers: [
@@ -528,6 +533,7 @@ function app() {
       this.expandedAccount = acct.id;
       this.view = "folder";
       this.selectedMessage = null;
+      this.junkSelection = {}; // reset multi-select when leaving Junk for any folder
 
       // Stale-while-revalidate: show what we cached on the last visit instantly,
       // then refresh from the server in the background. This kills the multi-
@@ -1236,6 +1242,92 @@ function app() {
       this.messageList = this.messageList.filter((m) => m.id !== messageId);
       if (this.selectedAccount && this.selectedFolder) {
         this._saveCachedList(this.selectedAccount, this.selectedFolder, this.messageList);
+      }
+    },
+
+    /* ------------------------- Junk bulk ops ------------------------- */
+    toggleJunkSelect(id) {
+      // Plain assignment instead of toggling via `delete` keeps the
+      // object reference live so Alpine's templated computeds (selected
+      // count, has-selection bar visibility) re-run on every toggle.
+      if (this.junkSelection[id]) {
+        const next = { ...this.junkSelection };
+        delete next[id];
+        this.junkSelection = next;
+      } else {
+        this.junkSelection = { ...this.junkSelection, [id]: true };
+      }
+    },
+
+    get junkSelectedCount() {
+      return Object.keys(this.junkSelection).length;
+    },
+
+    selectAllJunk() {
+      const next = {};
+      for (const m of this.messageList) next[m.id] = true;
+      this.junkSelection = next;
+    },
+
+    clearJunkSelection() {
+      this.junkSelection = {};
+    },
+
+    async bulkJunk(action) {
+      const ids = Object.keys(this.junkSelection);
+      if (ids.length === 0) return;
+      if (action === "delete" && !confirm(`Permanently delete ${ids.length} message(s)?`)) return;
+
+      this.busy = true;
+      try {
+        const url = `/api/folders/${this.selectedAccount.id}/junk/bulk`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, message_ids: ids }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        const data = await res.json();
+        const ok = data.succeeded || [];
+        for (const id of ok) this._dropFromList(id);
+        this.junkSelection = {};
+        this.message =
+          action === "restore"
+            ? `✓ Restored ${ok.length} to Inbox.`
+            : `✓ Deleted ${ok.length}.`;
+        if ((data.failed || []).length > 0) {
+          this.message += ` (${data.failed.length} failed)`;
+        }
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    async emptyJunk() {
+      if (!this.selectedAccount) return;
+      const n = this.messageList.length;
+      if (n === 0) return;
+      if (!confirm(`Permanently delete all ${n} message(s) in Junk? This cannot be undone.`)) return;
+
+      this.busy = true;
+      try {
+        const url = `/api/folders/${this.selectedAccount.id}/junk/empty`;
+        const res = await fetch(url, { method: "POST" });
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        const data = await res.json();
+        const ok = data.succeeded || [];
+        for (const id of ok) this._dropFromList(id);
+        this.junkSelection = {};
+        this.message = `✓ Junk emptied — ${ok.length} deleted.`;
+        if ((data.failed || []).length > 0) {
+          this.message += ` (${data.failed.length} failed)`;
+        }
+      } catch (e) {
+        this.message = "Error: " + e.message;
+      } finally {
+        this.busy = false;
       }
     },
 

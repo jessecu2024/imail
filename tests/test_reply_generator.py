@@ -53,6 +53,23 @@ def test_parse_legacy_missing_is_spam_defaults_to_false() -> None:
     assert trio.is_spam is False
 
 
+def test_parse_spam_reason_is_extracted() -> None:
+    raw = (
+        '{"is_spam": true, "spam_reason": "Generic marketing blast from Mailchimp.", '
+        '"positive": "", "neutral": "", "negative": ""}'
+    )
+    trio = parse_reply_json(raw)
+    assert trio.is_spam is True
+    assert trio.spam_reason == "Generic marketing blast from Mailchimp."
+
+
+def test_parse_legacy_missing_spam_reason_defaults_to_empty() -> None:
+    """Pre-1.4.3 responses without spam_reason still parse — field is empty."""
+    raw = '{"is_spam": true, "positive": "", "neutral": "", "negative": ""}'
+    trio = parse_reply_json(raw)
+    assert trio.spam_reason == ""
+
+
 def test_parse_raises_when_no_json() -> None:
     with pytest.raises(ValueError, match="JSON"):
         parse_reply_json("the model went rogue and produced only prose")

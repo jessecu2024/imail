@@ -400,8 +400,27 @@
                 ▸ Triage all unread
               </button>
             </template>
+            <template x-if="selectedFolder === 'junk' && messageList.length > 0">
+              <button class="danger" @click="emptyJunk()" :disabled="busy">
+                🗑 Empty Junk
+              </button>
+            </template>
           </div>
         </header>
+
+        <!-- Junk multi-select action bar (visible only when ≥1 row ticked) -->
+        <div class="bulk-bar" x-show="selectedFolder === 'junk' && junkSelectedCount > 0" x-cloak>
+          <span><strong x-text="junkSelectedCount"></strong>&nbsp;selected</span>
+          <span class="bulk-spacer"></span>
+          <button class="link" @click="selectAllJunk()" :disabled="busy">Select all</button>
+          <button class="link" @click="clearJunkSelection()" :disabled="busy">Clear</button>
+          <button class="primary" @click="bulkJunk('restore')" :disabled="busy">
+            📥 Restore <span x-text="junkSelectedCount"></span>
+          </button>
+          <button class="danger" @click="bulkJunk('delete')" :disabled="busy">
+            🗑 Delete <span x-text="junkSelectedCount"></span>
+          </button>
+        </div>
 
         <template x-if="busy && messageList.length === 0">
           <div class="loading"><div class="spinner"></div><p>Loading messages…</p></div>
@@ -414,6 +433,19 @@
         <ul class="message-list">
           <template x-for="m in messageList" :key="m.id">
             <li>
+              <!-- Junk-only multi-select checkbox. Stop click bubbling so
+                   tapping the box doesn't also open the message. -->
+              <span
+                x-show="selectedFolder === 'junk'"
+                class="junk-select"
+                role="checkbox"
+                :aria-checked="!!junkSelection[m.id]"
+                :class="{ on: junkSelection[m.id] }"
+                tabindex="0"
+                @click.stop="toggleJunkSelect(m.id)"
+                @keydown.enter.stop.prevent="toggleJunkSelect(m.id)"
+                @keydown.space.stop.prevent="toggleJunkSelect(m.id)"
+              ></span>
               <button class="message-row" :class="{ unread: m.unread, replied: m.replied, flagged: m.flagged }" @click="openMessage(m)">
                 <span class="avatar" :style="`background:${senderColor(m.sender)}`" x-text="senderInitial(m.sender)"></span>
                 <div class="row-body">
@@ -426,6 +458,13 @@
                   <div class="row-subject">
                     <span x-show="m.replied" class="replied-badge" x-text="t('replied')"></span>
                     <span x-text="m.subject"></span>
+                  </div>
+                  <!-- Junk-only: one-line reason the classifier gave. Empty
+                       when missing (junk from a pre-1.4.3 release) — the
+                       element just collapses. -->
+                  <div class="spam-reason" x-show="selectedFolder === 'junk' && m.spam_reason" x-cloak>
+                    <span class="spam-reason-label">why:</span>
+                    <span x-text="m.spam_reason"></span>
                   </div>
                 </div>
                 <span class="row-actions">

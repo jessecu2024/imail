@@ -80,12 +80,20 @@ Rules for every reply (this format is REQUIRED, no variants):
 - Do not invent facts. If a fact is needed, hedge ("I'll check and confirm...").
 
 If is_spam is true, set all three reply fields to the empty string "" —
-don't waste tokens drafting replies the user will never send.
+don't waste tokens drafting replies the user will never send. Also fill
+"spam_reason" with ONE concise English sentence (≤ 20 words) explaining
+why you classified this as spam — naming the actual signal you used
+(e.g. "Generic marketing blast from Mailchimp domain", "Phishing — sender
+impersonates HSBC but reply-to is gmail.com", "Automated GitHub deploy
+notification, no reply expected"). The user sees this in the Junk
+folder; vague reasons like "Looks like spam" are useless. If is_spam is
+false, set "spam_reason" to "".
 
 Return ONLY a JSON object, no surrounding prose, with exactly this shape:
 
 {
   "is_spam": true|false,
+  "spam_reason": "...one short sentence or empty...",
   "positive": "...full reply text or empty...",
   "neutral":  "...full reply text or empty...",
   "negative": "...full reply text or empty..."
@@ -101,10 +109,12 @@ class ReplyTrio:
     neutral: str
     negative: str
     is_spam: bool = False
+    spam_reason: str = ""
 
     def as_dict(self) -> dict[str, str | bool]:
         return {
             "is_spam": self.is_spam,
+            "spam_reason": self.spam_reason,
             "positive": self.positive,
             "neutral": self.neutral,
             "negative": self.negative,
@@ -552,4 +562,5 @@ def parse_reply_json(raw: str) -> ReplyTrio:
         neutral=str(payload.get("neutral", "")).strip(),
         negative=str(payload.get("negative", "")).strip(),
         is_spam=bool(payload.get("is_spam", False)),
+        spam_reason=str(payload.get("spam_reason", "")).strip(),
     )
